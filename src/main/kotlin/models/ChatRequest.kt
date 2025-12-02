@@ -5,7 +5,15 @@ data class Message(
     val role: String,
     val content: String,
     val disable_search: Boolean = true
-)
+) {
+    companion object {
+        fun create(role: MessageRole, content: String, disableSearch: Boolean = true) = Message(
+            role = role.value,
+            content = content,
+            disable_search = disableSearch
+        )
+    }
+}
 
 @Serializable
 data class ChatRequest(

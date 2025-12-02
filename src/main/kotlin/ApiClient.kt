@@ -6,11 +6,9 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 
-class ApiClient {
+class ApiClient : AutoCloseable {
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -23,92 +21,75 @@ class ApiClient {
         }
     }
 
-    fun sendRequest(userContent: String): String {
-        return runBlocking {
-            var lastError: Exception? = null
-            var lastContent: String? = null
-            
-            repeat(Config.MAX_RETRIES) { attempt ->
-                try {
-                    val content = performRequest(userContent)
-                    lastContent = content
-                    
-                    // Пытаемся распарсить JSON
-                    val cleanedContent = content
-                        .replace(Regex("```json\\s*"), "")
-                        .replace(Regex("```\\s*"), "")
-                        .trim()
-                    
-                    val aiResponse = json.decodeFromString<AiResponse>(cleanedContent)
-                    
-                    // Выводим информацию о ретраях, если они были
-                    if (attempt > 0) {
-                        println("(Потребовалось $attempt ${getRetryWord(attempt)} для получения валидного ответа)")
-                    }
-                    
-                    return@runBlocking formatResponse(aiResponse)
-                } catch (e: Exception) {
-                    lastError = e
-                    
-                    // Если это последняя попытка, выбрасываем исключение
-                    if (attempt == Config.MAX_RETRIES - 1) {
-                        val errorMessage = buildString {
-                            appendLine("Не удалось получить ответ в формате JSON после ${Config.MAX_RETRIES} попыток.")
-                            if (lastContent != null) {
-                                appendLine("Последний ответ:")
-                                appendLine(lastContent)
-                            }
-                            appendLine()
-                            appendLine("Ошибка парсинга: ${e.message}")
-                        }
-                        throw RuntimeException(errorMessage)
-                    }
+    suspend fun sendRequest(userContent: String): String {
+        var lastContent: String? = null
+        
+        repeat(Config.MAX_RETRIES) { attempt ->
+            try {
+                val content = performRequest(userContent)
+                lastContent = content
+                
+                val aiResponse = parseJsonResponse(content)
+                
+                if (attempt > 0) {
+                    println("(Потребовалось $attempt ${attempt.getRetryWord()} для получения валидного ответа)")
+                }
+                
+                return formatResponse(aiResponse)
+            } catch (e: Exception) {
+                if (attempt == Config.MAX_RETRIES - 1) {
+                    throw ApiException.InvalidJsonResponse(
+                        attempts = Config.MAX_RETRIES,
+                        lastContent = lastContent,
+                        cause = e
+                    )
                 }
             }
-            
-            // Этот код не должен выполниться, но на всякий случай
-            throw RuntimeException("Неожиданная ошибка при выполнении запроса")
         }
-    }
-    
-    private fun getRetryWord(count: Int): String {
-        return when {
-            count % 10 == 1 && count % 100 != 11 -> "ретрай"
-            count % 10 in 2..4 && count % 100 !in 12..14 -> "ретрая"
-            else -> "ретраев"
-        }
+        
+        throw ApiException.RequestFailed("Неожиданная ошибка при выполнении запроса")
     }
     
     private suspend fun performRequest(userContent: String): String {
-        val request = ChatRequest(
-            model = Config.MODEL,
-            messages = listOf(
-                Message(
-                    role = "system",
-                    content = Config.SYSTEM_PROMPT,
-                ),
-                Message(
-                    role = "user",
-                    content = userContent,
-                )
-            ),
-            max_tokens = Config.MAX_TOKENS
-        )
+        val request = createChatRequest(userContent)
         
         val response = client.post(Config.API_URL) {
-            header("accept", "application/json")
-            header("content-type", "application/json")
-            header("Authorization", "Bearer ${Config.API_KEY}")
-            contentType(ContentType.Application.Json)
+            configureHeaders()
             setBody(request)
         }
         
+        return extractContentFromResponse(response)
+    }
+    
+    private fun createChatRequest(userContent: String): ChatRequest {
+        return ChatRequest(
+            model = Config.MODEL,
+            messages = listOf(
+                Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT),
+                Message.create(MessageRole.USER, userContent)
+            ),
+            max_tokens = Config.MAX_TOKENS
+        )
+    }
+    
+    private fun HttpRequestBuilder.configureHeaders() {
+        header("accept", "application/json")
+        header("content-type", "application/json")
+        header("Authorization", "Bearer ${Config.API_KEY}")
+        contentType(ContentType.Application.Json)
+    }
+    
+    private suspend fun extractContentFromResponse(response: HttpResponse): String {
         val responseBody = response.bodyAsText()
         val chatResponse = json.decodeFromString<ChatResponse>(responseBody)
         
-        // Извлекаем content из ответа
         return chatResponse.choices.firstOrNull()?.message?.content
-            ?: throw RuntimeException("Ответ не содержит содержимого")
+            ?: throw ApiException.EmptyResponse()
+    }
+    
+    private fun parseJsonResponse(content: String): AiResponse {
+        val cleanedContent = content.cleanJsonContent()
+        return json.decodeFromString(cleanedContent)
     }
 
     private fun formatResponse(aiResponse: AiResponse): String {
@@ -121,7 +102,7 @@ class ApiClient {
         }
     }
 
-    fun close() {
+    override fun close() {
         client.close()
     }
 }
