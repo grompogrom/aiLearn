@@ -2,7 +2,7 @@ fun main() {
     val apiClient = ApiClient()
 
     println("=== Терминальная программа для работы с AI ===")
-    println("AI URL: ${ApiClient.API_URL}")
+    println("AI URL: ${Config.API_URL}")
     println("Введите 'exit' или 'quit' для выхода")
     println("\nТеперь вводите данные для отправки в API:")
 
@@ -25,7 +25,6 @@ fun main() {
                 try {
                     val content = apiClient.sendRequest(userInput)
 
-                    println("Ответ:")
                     println(content)
                 } catch (e: Exception) {
                     println("\n${e.message}")
