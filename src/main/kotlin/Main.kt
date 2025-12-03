@@ -6,7 +6,9 @@ fun main() = runBlocking {
     ApiClient().use { apiClient ->
         printWelcomeMessage()
         
-        while (true) {
+        var dialogActive = true
+        
+        while (dialogActive) {
             val userInput = readUserInput() ?: continue
             
             when {
@@ -14,7 +16,13 @@ fun main() = runBlocking {
                     println("Завершение работы...")
                     break
                 }
-                else -> handleUserRequest(apiClient, userInput)
+                else -> {
+                    val shouldContinue = handleUserRequest(apiClient, userInput)
+                    if (!shouldContinue) {
+                        dialogActive = false
+                        println("\n=== Диалог завершен ===")
+                    }
+                }
             }
         }
     }
@@ -23,10 +31,11 @@ fun main() = runBlocking {
 }
 
 private fun printWelcomeMessage() {
-    println("=== Терминальная программа для работы с AI ===")
-    println("AI URL: ${Config.API_URL}")
-    println("Введите 'exit' или 'quit' для выхода")
-    println("\nТеперь вводите данные для отправки в API:")
+    println("=== Генератор технических заданий (ТЗ) ===")
+    println("Опишите, что вы хотите создать, и ассистент поможет составить ТЗ")
+    println("Ассистент задаст примерно 5 уточняющих вопросов для уточнения деталей")
+    println("После формирования ТЗ диалог завершится автоматически")
+    println("\nВведите 'exit' или 'quit' для выхода в любой момент")
 }
 
 private fun readUserInput(): String? {
@@ -46,16 +55,24 @@ private fun String.isExitCommand(): Boolean {
     return this.lowercase() in EXIT_COMMANDS
 }
 
-private suspend fun handleUserRequest(apiClient: ApiClient, userInput: String) {
-    try {
+private suspend fun handleUserRequest(apiClient: ApiClient, userInput: String): Boolean {
+    return try {
         val content = apiClient.sendRequest(userInput)
-        println(content)
-    } catch (e: ApiException) {
-        println("\n${e.message}")
-        println("Попробуйте снова или введите 'exit' для выхода.")
+        
+        // Проверяем, содержит ли ответ маркер завершения диалога
+        if (content.contains(Config.DIALOG_END_MARKER)) {
+            // Выводим ответ без маркера
+            val cleanedContent = content.replace(Config.DIALOG_END_MARKER, "").trim()
+            println(cleanedContent)
+            false // Диалог завершен
+        } else {
+            println(content)
+            true // Продолжаем диалог
+        }
     } catch (e: Exception) {
         println("\nПроизошла ошибка: ${e.message}")
         println("Попробуйте снова или введите 'exit' для выхода.")
+        true // Продолжаем диалог при ошибке
     }
 }
 

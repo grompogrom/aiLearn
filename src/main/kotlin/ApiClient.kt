@@ -19,59 +19,63 @@ class ApiClient : AutoCloseable {
         install(ContentNegotiation) {
             json(json)
         }
+        // Увеличиваем таймаут запроса, чтобы снизить вероятность ошибок Request timeout
+        install(io.ktor.client.plugins.HttpTimeout) {
+            requestTimeoutMillis = 60_000
+        }
+    }
+
+    private val messageHistory = mutableListOf<Message>().apply {
+        add(Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT))
     }
 
     suspend fun sendRequest(userContent: String): String {
-        var lastContent: String? = null
-        
-        repeat(Config.MAX_RETRIES) { attempt ->
-            try {
-                val content = performRequest(userContent)
-                lastContent = content
-                
-                val aiResponse = parseJsonResponse(content)
-                
-                if (attempt > 0) {
-                    println("(Потребовалось $attempt ${attempt.getRetryWord()} для получения валидного ответа)")
-                }
-                
-                return formatResponse(aiResponse)
-            } catch (e: Exception) {
-                if (attempt == Config.MAX_RETRIES - 1) {
-                    throw ApiException.InvalidJsonResponse(
-                        attempts = Config.MAX_RETRIES,
-                        lastContent = lastContent,
-                        cause = e
-                    )
-                }
-            }
+        // Определяем, является ли это ответом на вопрос ассистента
+        val isAnswerToQuestion = messageHistory.lastOrNull()?.role == MessageRole.ASSISTANT.value
+        val formattedUserContent = if (isAnswerToQuestion) {
+            val questionNumber = getCurrentQuestionNumber()
+            "[Ответ на вопрос $questionNumber]: $userContent"
+        } else {
+            userContent
         }
         
-        throw ApiException.RequestFailed("Неожиданная ошибка при выполнении запроса")
-    }
-    
-    private suspend fun performRequest(userContent: String): String {
-        val request = createChatRequest(userContent)
+        // Добавляем сообщение пользователя в историю
+        messageHistory.add(Message.create(MessageRole.USER, formattedUserContent))
+        
+        val request = createChatRequest()
         
         val response = client.post(Config.API_URL) {
             configureHeaders()
             setBody(request)
         }
         
-        return extractContentFromResponse(response)
+        val assistantResponse = extractContentFromResponse(response)
+        
+        // Добавляем ответ ассистента в историю
+        messageHistory.add(Message.create(MessageRole.ASSISTANT, assistantResponse))
+        
+        return assistantResponse
     }
     
-    private fun createChatRequest(userContent: String): ChatRequest {
+    private fun createChatRequest(): ChatRequest {
         return ChatRequest(
             model = Config.MODEL,
-            messages = listOf(
-                Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT),
-                Message.create(MessageRole.USER, userContent)
-            ),
+            messages = messageHistory.toList(),
             max_tokens = Config.MAX_TOKENS
         )
     }
     
+    private fun getCurrentQuestionNumber(): Int {
+        // Считаем количество вопросов ассистента (сообщения ASSISTANT после системного)
+        var questionCount = 0
+        for (message in messageHistory) {
+            if (message.role == MessageRole.ASSISTANT.value) {
+                questionCount++
+            }
+        }
+        return questionCount
+    }
+
     private fun HttpRequestBuilder.configureHeaders() {
         header("accept", "application/json")
         header("content-type", "application/json")
@@ -81,24 +85,22 @@ class ApiClient : AutoCloseable {
     
     private suspend fun extractContentFromResponse(response: HttpResponse): String {
         val responseBody = response.bodyAsText()
-        val chatResponse = json.decodeFromString<ChatResponse>(responseBody)
-        
-        return chatResponse.choices.firstOrNull()?.message?.content
-            ?: throw ApiException.EmptyResponse()
-    }
-    
-    private fun parseJsonResponse(content: String): AiResponse {
-        val cleanedContent = content.cleanJsonContent()
-        return json.decodeFromString(cleanedContent)
-    }
 
-    private fun formatResponse(aiResponse: AiResponse): String {
-        return buildString {
-            appendLine("Ответ:")
-            appendLine(aiResponse.answer)
-            appendLine()
-            appendLine("Рекомендации:")
-            appendLine(aiResponse.recomendation)
+        // Если API вернул ошибку (не 2xx), показываем тело ответа напрямую
+        if (!response.status.isSuccess()) {
+            return buildString {
+                appendLine("Ошибка от API (${response.status.value} ${response.status.description}):")
+                appendLine(responseBody)
+            }
+        }
+
+        // Пытаемся распарсить успешный ответ как ChatResponse
+        return try {
+            val chatResponse = json.decodeFromString<ChatResponse>(responseBody)
+            chatResponse.choices.firstOrNull()?.message?.content
+                ?: responseBody
+        } catch (e: Exception) {
+            responseBody
         }
     }
 
