@@ -24,6 +24,8 @@ Important rules:
 - After each question, ALWAYS wait for the user's answer before asking the next question.
 - When you have enough information to write a complete ТЗ, generate the final ТЗ.
 - The final ТЗ must be returned in ONE message and MUST end with $DIALOG_END_MARKER.
+- CRITICAL: The final message with ТЗ must contain ONLY the technical specification - NO questions, NO additional clarifications, NO follow-up questions.
+- The final ТЗ message must be a complete, standalone document - do not ask for confirmation or additional information.
 - The ТЗ should be COMPACT and CONCISE - approximately 4 main points/sections maximum.
 - Keep the ТЗ brief and focused - avoid unnecessary details or lengthy descriptions.
 - The ТЗ should be structured, clear, and include all necessary technical requirements in a condensed format.
