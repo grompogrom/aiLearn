@@ -31,11 +31,8 @@ fun main() = runBlocking {
 }
 
 private fun printWelcomeMessage() {
-    println("=== Генератор технических заданий (ТЗ) ===")
-    println("Опишите, что вы хотите создать, и ассистент поможет составить ТЗ")
-    println("Ассистент задаст примерно 5 уточняющих вопросов для уточнения деталей")
-    println("После формирования ТЗ диалог завершится автоматически")
     println("\nВведите 'exit' или 'quit' для выхода в любой момент")
+    println("temp is ${Config.TEMPERATURE}")
 }
 
 private fun readUserInput(): String? {

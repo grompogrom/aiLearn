@@ -27,9 +27,10 @@ class ApiClient : AutoCloseable {
 
     private val messageHistory = mutableListOf<Message>().apply {
         add(Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT))
+        add(Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT))
     }
 
-    suspend fun sendRequest(userContent: String): String {
+    suspend fun sendRequest(userContent: String, temperature: Double = Config.TEMPERATURE): String {
         // Определяем, является ли это ответом на вопрос ассистента
         val isAnswerToQuestion = messageHistory.lastOrNull()?.role == MessageRole.ASSISTANT.value
         val formattedUserContent = if (isAnswerToQuestion) {
@@ -40,9 +41,9 @@ class ApiClient : AutoCloseable {
         }
         
         // Добавляем сообщение пользователя в историю
-        messageHistory.add(Message.create(MessageRole.USER, formattedUserContent))
+        messageHistory[1] = (Message.create(MessageRole.USER, formattedUserContent))
         
-        val request = createChatRequest()
+        val request = createChatRequest(temperature)
         
         val response = client.post(Config.API_URL) {
             configureHeaders()
@@ -52,16 +53,42 @@ class ApiClient : AutoCloseable {
         val assistantResponse = extractContentFromResponse(response)
         
         // Добавляем ответ ассистента в историю
-        messageHistory.add(Message.create(MessageRole.ASSISTANT, assistantResponse))
+//        messageHistory.add(Message.create(MessageRole.ASSISTANT, assistantResponse))
         
         return assistantResponse
     }
     
-    private fun createChatRequest(): ChatRequest {
+    /**
+     * Sends an independent request without using shared message history.
+     * Useful for temperature comparison where each request should be independent.
+     */
+    suspend fun sendIndependentRequest(userContent: String, temperature: Double = Config.TEMPERATURE): String {
+        val messages = listOf(
+            Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT),
+            Message.create(MessageRole.USER, userContent)
+        )
+        
+        val request = ChatRequest(
+            model = Config.MODEL,
+            messages = messages,
+            max_tokens = Config.MAX_TOKENS,
+            temperature = temperature
+        )
+        
+        val response = client.post(Config.API_URL) {
+            configureHeaders()
+            setBody(request)
+        }
+        
+        return extractContentFromResponse(response)
+    }
+    
+    private fun createChatRequest(temperature: Double = Config.TEMPERATURE): ChatRequest {
         return ChatRequest(
             model = Config.MODEL,
             messages = messageHistory.toList(),
-            max_tokens = Config.MAX_TOKENS
+            max_tokens = Config.MAX_TOKENS,
+            temperature = temperature
         )
     }
     
