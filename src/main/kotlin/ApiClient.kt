@@ -30,7 +30,7 @@ class ApiClient : AutoCloseable {
         add(Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT))
     }
 
-    suspend fun sendRequest(userContent: String, temperature: Double = Config.TEMPERATURE): String {
+    suspend fun sendRequest(userContent: String, temperature: Double = Config.TEMPERATURE): ApiResponse {
         // Определяем, является ли это ответом на вопрос ассистента
         val isAnswerToQuestion = messageHistory.lastOrNull()?.role == MessageRole.ASSISTANT.value
         val formattedUserContent = if (isAnswerToQuestion) {
@@ -50,19 +50,19 @@ class ApiClient : AutoCloseable {
             setBody(request)
         }
         
-        val assistantResponse = extractContentFromResponse(response)
+        val apiResponse = extractContentFromResponse(response)
         
         // Добавляем ответ ассистента в историю
-//        messageHistory.add(Message.create(MessageRole.ASSISTANT, assistantResponse))
+//        messageHistory.add(Message.create(MessageRole.ASSISTANT, apiResponse.content))
         
-        return assistantResponse
+        return apiResponse
     }
     
     /**
      * Sends an independent request without using shared message history.
      * Useful for temperature comparison where each request should be independent.
      */
-    suspend fun sendIndependentRequest(userContent: String, temperature: Double = Config.TEMPERATURE): String {
+    suspend fun sendIndependentRequest(userContent: String, temperature: Double = Config.TEMPERATURE): ApiResponse {
         val messages = listOf(
             Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT),
             Message.create(MessageRole.USER, userContent)
@@ -110,24 +110,26 @@ class ApiClient : AutoCloseable {
         contentType(ContentType.Application.Json)
     }
     
-    private suspend fun extractContentFromResponse(response: HttpResponse): String {
+    private suspend fun extractContentFromResponse(response: HttpResponse): ApiResponse {
         val responseBody = response.bodyAsText()
 
         // Если API вернул ошибку (не 2xx), показываем тело ответа напрямую
         if (!response.status.isSuccess()) {
-            return buildString {
+            val errorContent = buildString {
                 appendLine("Ошибка от API (${response.status.value} ${response.status.description}):")
                 appendLine(responseBody)
             }
+            return ApiResponse(content = errorContent, usage = null)
         }
 
         // Пытаемся распарсить успешный ответ как ChatResponse
         return try {
             val chatResponse = json.decodeFromString<ChatResponse>(responseBody)
-            chatResponse.choices.firstOrNull()?.message?.content
+            val content = chatResponse.choices.firstOrNull()?.message?.content
                 ?: responseBody
+            ApiResponse(content = content, usage = chatResponse.usage)
         } catch (e: Exception) {
-            responseBody
+            ApiResponse(content = responseBody, usage = null)
         }
     }
 

@@ -54,7 +54,11 @@ private fun String.isExitCommand(): Boolean {
 
 private suspend fun handleUserRequest(apiClient: ApiClient, userInput: String): Boolean {
     return try {
-        val content = apiClient.sendRequest(userInput)
+        val apiResponse = apiClient.sendRequest(userInput)
+        val content = apiResponse.content
+        
+        // Печатаем информацию о токенах
+        printTokenUsage(apiResponse.usage)
         
         // Проверяем, содержит ли ответ маркер завершения диалога
         if (content.contains(Config.DIALOG_END_MARKER)) {
@@ -71,5 +75,23 @@ private suspend fun handleUserRequest(apiClient: ApiClient, userInput: String): 
         println("Попробуйте снова или введите 'exit' для выхода.")
         true // Продолжаем диалог при ошибке
     }
+}
+
+private fun printTokenUsage(usage: Usage?) {
+    if (usage != null) {
+        println("\n--- Token Usage ---")
+        usage.prompt_tokens?.let { println("Prompt tokens: $it") }
+        usage.completion_tokens?.let { println("Completion tokens: $it") }
+        usage.total_tokens?.let { 
+            println("Total tokens: $it")
+            val price = calculatePrice(it)
+            println("Price: $${String.format("%.6f", price)}")
+        }
+        println("------------------\n")
+    }
+}
+
+private fun calculatePrice(totalTokens: Int): Double {
+    return (totalTokens / 1_000_000.0) * Config.PRICE_MILLION_TOKENS
 }
 
