@@ -1,102 +1,35 @@
+import core.config.ConfigLoader
+import core.conversation.ConversationManager
+import core.utils.use
+import api.provider.ProviderFactory
+import frontend.cli.CliFrontend
 import kotlinx.coroutines.runBlocking
 
-private val EXIT_COMMANDS = setOf("exit", "quit")
-
-// Option to enable/disable message history
-// If true: all dialog history is sent in each request
-// If false: each message is sent with only system prompt, no history
-private val USE_MESSAGE_HISTORY = true
-
+/**
+ * Application entry point.
+ * Initializes configuration, creates LLM provider, conversation manager, and frontend,
+ * then starts the application.
+ */
 fun main() = runBlocking {
-    ApiClient(useHistory = USE_MESSAGE_HISTORY).use { apiClient ->
-        printWelcomeMessage()
-        
-        var dialogActive = true
-        
-        while (dialogActive) {
-            val userInput = readUserInput() ?: continue
-            
-            when {
-                userInput.isExitCommand() -> {
-                    println("Завершение работы...")
-                    break
-                }
-                else -> {
-                    val shouldContinue = handleUserRequest(apiClient, userInput)
-                    if (!shouldContinue) {
-                        dialogActive = false
-                        println("\n=== Диалог завершен ===")
-                    }
-                }
-            }
-        }
+    // Load configuration from environment variables, config file, or BuildConfig
+    val config = ConfigLoader.load()
+    
+    // Validate API key
+    if (config.apiKey.isBlank()) {
+        System.err.println("Error: API key is not configured.")
+        System.err.println("Please set AILEARN_API_KEY environment variable,")
+        System.err.println("or create ailearn.config.properties file with api.key=your_key,")
+        System.err.println("or set perplexityApiKey in gradle.properties for build-time injection.")
+        return@runBlocking
     }
     
-    println("Программа завершена.")
-}
-
-private fun printWelcomeMessage() {
-    println("\nВведите 'exit' или 'quit' для выхода в любой момент")
-    println("temp is ${Config.TEMPERATURE}")
-}
-
-private fun readUserInput(): String? {
-    print("\nВвод: ")
-    val input = readln().trim()
-    
-    return when {
-        input.isBlank() -> {
-            println("Пустой ввод. Попробуйте снова.")
-            null
-        }
-        else -> input
-    }
-}
-
-private fun String.isExitCommand(): Boolean {
-    return this.lowercase() in EXIT_COMMANDS
-}
-
-private suspend fun handleUserRequest(apiClient: ApiClient, userInput: String): Boolean {
-    return try {
-        val apiResponse = apiClient.sendRequest(userInput)
-        val content = apiResponse.content
+    // Create LLM provider (currently Perplexity, but can be easily switched)
+    ProviderFactory.createFromConfig(config).use { provider ->
+        // Create conversation manager with provider and config
+        val conversationManager = ConversationManager(provider, config)
         
-        // Печатаем информацию о токенах
-        printTokenUsage(apiResponse.usage)
-        
-        // Проверяем, содержит ли ответ маркер завершения диалога
-        if (content.contains(Config.DIALOG_END_MARKER)) {
-            // Выводим ответ без маркера
-            val cleanedContent = content.replace(Config.DIALOG_END_MARKER, "").trim()
-            println(cleanedContent)
-            false // Диалог завершен
-        } else {
-            println(content)
-            true // Продолжаем диалог
-        }
-    } catch (e: Exception) {
-        println("\nПроизошла ошибка: ${e.message}")
-        println("Попробуйте снова или введите 'exit' для выхода.")
-        true // Продолжаем диалог при ошибке
+        // Create and start frontend (currently CLI, but can be easily replaced)
+        val frontend = CliFrontend(config)
+        frontend.start(conversationManager)
     }
 }
-
-private fun printTokenUsage(usage: Usage?) {
-    if (usage != null) {
-        println("\n--- Token Usage ---")
-        usage.prompt_tokens?.let { println("Prompt tokens: $it") }
-        usage.completion_tokens?.let { println("Completion tokens: $it") }
-        usage.total_tokens?.let { 
-            println("Total tokens: $it")
-            val price = calculatePrice(it)
-            println("Price: $${String.format("%.6f", price)}")
-        }
-        println("------------------\n")
-    }
-}
-
-private fun calculatePrice(totalTokens: Int): Double {
-    return (totalTokens / 1_000_000.0) * Config.PRICE_MILLION_TOKENS
-}
-
