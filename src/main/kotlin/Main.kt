@@ -2,8 +2,13 @@ import kotlinx.coroutines.runBlocking
 
 private val EXIT_COMMANDS = setOf("exit", "quit")
 
+// Option to enable/disable message history
+// If true: all dialog history is sent in each request
+// If false: each message is sent with only system prompt, no history
+private val USE_MESSAGE_HISTORY = true
+
 fun main() = runBlocking {
-    ApiClient().use { apiClient ->
+    ApiClient(useHistory = USE_MESSAGE_HISTORY).use { apiClient ->
         printWelcomeMessage()
         
         var dialogActive = true

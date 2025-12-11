@@ -8,7 +8,9 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.json.Json
 
-class ApiClient : AutoCloseable {
+class ApiClient(
+    private val useHistory: Boolean = true
+) : AutoCloseable {
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -27,23 +29,28 @@ class ApiClient : AutoCloseable {
 
     private val messageHistory = mutableListOf<Message>().apply {
         add(Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT))
-        add(Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT))
     }
 
     suspend fun sendRequest(userContent: String, temperature: Double = Config.TEMPERATURE): ApiResponse {
-        // Определяем, является ли это ответом на вопрос ассистента
-        val isAnswerToQuestion = messageHistory.lastOrNull()?.role == MessageRole.ASSISTANT.value
-        val formattedUserContent = if (isAnswerToQuestion) {
-            val questionNumber = getCurrentQuestionNumber()
-            "[Ответ на вопрос $questionNumber]: $userContent"
+        val request = if (useHistory) {
+            // Добавляем сообщение пользователя в историю
+            messageHistory.add(Message.create(MessageRole.USER, userContent))
+            
+            createChatRequest(temperature)
         } else {
-            userContent
+            // Если история отключена, отправляем только системный промпт и текущее сообщение
+            val messages = listOf(
+                Message.create(MessageRole.SYSTEM, Config.SYSTEM_PROMPT),
+                Message.create(MessageRole.USER, userContent)
+            )
+            
+            ChatRequest(
+                model = Config.MODEL,
+                messages = messages,
+                max_tokens = Config.MAX_TOKENS,
+                temperature = temperature
+            )
         }
-        
-        // Добавляем сообщение пользователя в историю
-        messageHistory[1] = (Message.create(MessageRole.USER, formattedUserContent))
-        
-        val request = createChatRequest(temperature)
         
         val response = client.post(Config.API_URL) {
             configureHeaders()
@@ -52,8 +59,10 @@ class ApiClient : AutoCloseable {
         
         val apiResponse = extractContentFromResponse(response)
         
-        // Добавляем ответ ассистента в историю
-//        messageHistory.add(Message.create(MessageRole.ASSISTANT, apiResponse.content))
+        // Добавляем ответ ассистента в историю только если история включена
+        if (useHistory) {
+            messageHistory.add(Message.create(MessageRole.ASSISTANT, apiResponse.content))
+        }
         
         return apiResponse
     }
@@ -90,17 +99,6 @@ class ApiClient : AutoCloseable {
             max_tokens = Config.MAX_TOKENS,
             temperature = temperature
         )
-    }
-    
-    private fun getCurrentQuestionNumber(): Int {
-        // Считаем количество вопросов ассистента (сообщения ASSISTANT после системного)
-        var questionCount = 0
-        for (message in messageHistory) {
-            if (message.role == MessageRole.ASSISTANT.value) {
-                questionCount++
-            }
-        }
-        return questionCount
     }
 
     private fun HttpRequestBuilder.configureHeaders() {
