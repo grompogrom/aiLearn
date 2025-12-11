@@ -43,6 +43,19 @@ class CliFrontend(
 
         println("Программа завершена.")
     }
+    
+    /**
+     * Creates a summarization callback that notifies the user when summarization is in progress.
+     */
+    fun createSummarizationCallback(): (Boolean) -> Unit {
+        return { isStarting ->
+            if (isStarting) {
+                println("\n[Summarization] Dialog history exceeds token threshold. Summarizing conversation...")
+            } else {
+                println("[Summarization] Summary complete. Continuing with summarized context.\n")
+            }
+        }
+    }
 
     private fun printWelcomeMessage() {
         println("\nВведите 'exit' или 'quit' для выхода в любой момент")

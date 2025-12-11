@@ -25,11 +25,14 @@ fun main() = runBlocking {
     
     // Create LLM provider (currently Perplexity, but can be easily switched)
     ProviderFactory.createFromConfig(config).use { provider ->
-        // Create conversation manager with provider and config
-        val conversationManager = ConversationManager(provider, config)
-        
-        // Create and start frontend (currently CLI, but can be easily replaced)
+        // Create frontend first to get summarization callback
         val frontend = CliFrontend(config)
+        val summarizationCallback = frontend.createSummarizationCallback()
+        
+        // Create conversation manager with provider, config, and summarization callback
+        val conversationManager = ConversationManager(provider, config, summarizationCallback)
+        
+        // Start frontend with conversation manager
         frontend.start(conversationManager)
     }
 }

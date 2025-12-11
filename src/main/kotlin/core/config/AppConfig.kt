@@ -15,6 +15,14 @@ interface AppConfig {
     val pricePerMillionTokens: Double
     val requestTimeoutMillis: Long
     val useMessageHistory: Boolean
+    
+    // Summarization configuration
+    val summarizationTokenThreshold: Int
+    val summarizationModel: String
+    val summarizationMaxTokens: Int
+    val summarizationTemperature: Double
+    val summarizationSystemPrompt: String
+    val summarizationPrompt: String
 }
 
 /**
@@ -30,4 +38,12 @@ object DefaultConfig {
     const val DEFAULT_PRICE_PER_MILLION_TOKENS = 1.0
     const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 60_000L
     const val DEFAULT_USE_MESSAGE_HISTORY = true
+    
+    // Summarization defaults
+    const val DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD = 600
+    const val DEFAULT_SUMMARIZATION_MODEL = "sonar"
+    const val DEFAULT_SUMMARIZATION_MAX_TOKENS = 500
+    const val DEFAULT_SUMMARIZATION_TEMPERATURE = 0.3
+    const val DEFAULT_SUMMARIZATION_SYSTEM_PROMPT = "You are a helpful assistant that summarizes conversations concisely."
+    const val DEFAULT_SUMMARIZATION_PROMPT = "Please provide a brief summary of the conversation so far, capturing the key topics, questions, and answers discussed. Keep it concise and focused on the main points."
 }
