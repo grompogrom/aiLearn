@@ -72,59 +72,11 @@ class ConversationManager(
             val userContentWithSummary = "Previous conversation summary: $summary\n\n$userContent"
             
             // Proceed with the normal request flow, using the combined message
-            val request = if (config.useMessageHistory) {
-                messageHistory.add(Message.create(MessageRole.USER, userContentWithSummary))
-                createChatRequest(temperature ?: config.temperature)
-            } else {
-                val messages = listOf(
-                    Message.create(MessageRole.SYSTEM, config.systemPrompt),
-                    Message.create(MessageRole.USER, userContentWithSummary)
-                )
-                ChatRequest(
-                    model = config.model,
-                    messages = messages,
-                    maxTokens = config.maxTokens,
-                    temperature = temperature ?: config.temperature
-                )
-            }
-            
-            val response = llmProvider.sendRequest(request)
-            
-            if (config.useMessageHistory) {
-                messageHistory.add(Message.create(MessageRole.ASSISTANT, response.content))
-                // Store the response usage for the next summarization check
-                lastResponseUsage = response.usage
-            }
-            
-            return response
+            return sendRequestInternal(userContentWithSummary, temperature)
         }
         
         // Proceed with the normal request flow (when summarization is not needed)
-        val request = if (config.useMessageHistory) {
-            messageHistory.add(Message.create(MessageRole.USER, userContent))
-            createChatRequest(temperature ?: config.temperature)
-        } else {
-            val messages = listOf(
-                Message.create(MessageRole.SYSTEM, config.systemPrompt),
-                Message.create(MessageRole.USER, userContent)
-            )
-            ChatRequest(
-                model = config.model,
-                messages = messages,
-                maxTokens = config.maxTokens,
-                temperature = temperature ?: config.temperature
-            )
-        }
-
-        val response = llmProvider.sendRequest(request)
-
-        if (config.useMessageHistory) {
-            messageHistory.add(Message.create(MessageRole.ASSISTANT, response.content))
-            // Store the response usage for the next summarization check
-            lastResponseUsage = response.usage
-        }
-
-        return response
+        return sendRequestInternal(userContent, temperature)
     }
 
     /**
@@ -162,6 +114,38 @@ class ConversationManager(
      * Gets the current conversation history.
      */
     fun getHistory(): List<Message> = messageHistory.toList()
+
+    /**
+     * Internal method to send a request with the given user content.
+     * Handles request creation, sending, and response tracking.
+     */
+    private suspend fun sendRequestInternal(userContent: String, temperature: Double?): ChatResponse {
+        val request = if (config.useMessageHistory) {
+            messageHistory.add(Message.create(MessageRole.USER, userContent))
+            createChatRequest(temperature ?: config.temperature)
+        } else {
+            val messages = listOf(
+                Message.create(MessageRole.SYSTEM, config.systemPrompt),
+                Message.create(MessageRole.USER, userContent)
+            )
+            ChatRequest(
+                model = config.model,
+                messages = messages,
+                maxTokens = config.maxTokens,
+                temperature = temperature ?: config.temperature
+            )
+        }
+
+        val response = llmProvider.sendRequest(request)
+
+        if (config.useMessageHistory) {
+            messageHistory.add(Message.create(MessageRole.ASSISTANT, response.content))
+            // Store the response usage for the next summarization check
+            lastResponseUsage = response.usage
+        }
+
+        return response
+    }
 
     private fun createChatRequest(temperature: Double): ChatRequest {
         return ChatRequest(

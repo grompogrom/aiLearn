@@ -27,6 +27,7 @@ src/main/kotlin/
 │   │   └── LlmProvider.kt
 │   ├── conversation/                # Business logic
 │   │   ├── ConversationManager.kt
+│   │   ├── ConversationSummarizer.kt
 │   │   └── TokenCostCalculator.kt
 │   ├── config/                      # Configuration management
 │   │   ├── AppConfig.kt
@@ -54,7 +55,8 @@ src/main/kotlin/
 
 - **Domain Models**: Pure data classes representing core concepts (Message, ChatRequest, ChatResponse, etc.)
 - **LlmProvider Interface**: Abstraction for LLM providers, allowing easy swapping of providers
-- **ConversationManager**: Manages conversation state and handles chat requests
+- **ConversationManager**: Manages conversation state and handles chat requests with automatic summarization
+- **ConversationSummarizer**: Handles conversation summarization when token usage exceeds threshold
 - **TokenCostCalculator**: Calculates token costs and formats usage information
 
 **Key Design Decisions**:
@@ -109,6 +111,12 @@ src/main/kotlin/
 - `AILEARN_PRICE_PER_MILLION_TOKENS`: Price per million tokens
 - `AILEARN_REQUEST_TIMEOUT_MILLIS`: Request timeout in milliseconds
 - `AILEARN_USE_MESSAGE_HISTORY`: Whether to use message history (true/false)
+- `AILEARN_SUMMARIZATION_TOKEN_THRESHOLD`: Token threshold for triggering summarization (default: 600)
+- `AILEARN_SUMMARIZATION_MODEL`: Model to use for summarization (default: "sonar")
+- `AILEARN_SUMMARIZATION_MAX_TOKENS`: Max tokens for summarization request (default: 500)
+- `AILEARN_SUMMARIZATION_TEMPERATURE`: Temperature for summarization (default: 0.3)
+- `AILEARN_SUMMARIZATION_SYSTEM_PROMPT`: System prompt for summarization requests
+- `AILEARN_SUMMARIZATION_PROMPT`: Instruction prompt for summarization
 
 **Config File Format** (`ailearn.config.properties`):
 ```properties
@@ -122,13 +130,20 @@ dialog.end.marker=###END###
 price.per.million.tokens=1.0
 request.timeout.millis=60000
 use.message.history=true
+summarization.token.threshold=600
+summarization.model=sonar
+summarization.max.tokens=500
+summarization.temperature=0.3
+summarization.system.prompt=You are a helpful assistant that summarizes conversations concisely.
+summarization.prompt=Please provide a brief summary of the conversation so far, capturing the key topics, questions, and answers discussed. Keep it concise and focused on the main points.
 ```
 
 ## SOLID Principles
 
 ### Single Responsibility Principle (SRP)
 - Each class has a single, well-defined responsibility
-- `ConversationManager` manages conversations
+- `ConversationManager` manages conversations and triggers summarization when needed
+- `ConversationSummarizer` handles conversation summarization logic
 - `TokenCostCalculator` calculates costs
 - `PerplexityProvider` handles Perplexity API communication
 - `CliFrontend` handles CLI interaction
