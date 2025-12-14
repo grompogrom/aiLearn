@@ -23,6 +23,19 @@ interface AppConfig {
     val summarizationTemperature: Double
     val summarizationSystemPrompt: String
     val summarizationPrompt: String
+    
+    /**
+     * Type of memory store to use for persisting conversation history.
+     * Values: "json" or "sqlite"
+     * Default: "json"
+     */
+    val memoryStoreType: String
+    
+    /**
+     * Optional path for memory store file/database.
+     * If not specified, uses default location in current working directory.
+     */
+    val memoryStorePath: String?
 }
 
 /**
@@ -46,4 +59,8 @@ object DefaultConfig {
     const val DEFAULT_SUMMARIZATION_TEMPERATURE = 0.3
     const val DEFAULT_SUMMARIZATION_SYSTEM_PROMPT = "You are a helpful assistant that summarizes conversations concisely."
     const val DEFAULT_SUMMARIZATION_PROMPT = "Please provide a brief summary of the conversation so far, capturing the key topics, questions, and answers discussed. Keep it concise and focused on the main points."
+    
+    // Memory store defaults
+    const val DEFAULT_MEMORY_STORE_TYPE = "json"
+    const val DEFAULT_MEMORY_STORE_PATH = ""  // Empty string means use default location
 }

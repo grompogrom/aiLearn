@@ -89,6 +89,14 @@ private class EnvironmentConfig : AppConfig {
     override val summarizationPrompt: String
         get() = System.getenv("AILEARN_SUMMARIZATION_PROMPT") 
             ?: DefaultConfig.DEFAULT_SUMMARIZATION_PROMPT
+    
+    override val memoryStoreType: String
+        get() = System.getenv("AILEARN_MEMORY_STORE_TYPE") 
+            ?: DefaultConfig.DEFAULT_MEMORY_STORE_TYPE
+    
+    override val memoryStorePath: String?
+        get() = System.getenv("AILEARN_MEMORY_STORE_PATH")?.takeIf { it.isNotEmpty() }
+            ?: if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
 }
 
 /**
@@ -133,6 +141,10 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val summarizationTemperature: Double get() = getDouble("summarization.temperature", DefaultConfig.DEFAULT_SUMMARIZATION_TEMPERATURE)
     override val summarizationSystemPrompt: String get() = getString("summarization.system.prompt", DefaultConfig.DEFAULT_SUMMARIZATION_SYSTEM_PROMPT)
     override val summarizationPrompt: String get() = getString("summarization.prompt", DefaultConfig.DEFAULT_SUMMARIZATION_PROMPT)
+    
+    override val memoryStoreType: String get() = getString("memory.store.type", DefaultConfig.DEFAULT_MEMORY_STORE_TYPE)
+    override val memoryStorePath: String? get() = properties.getProperty("memory.store.path")?.takeIf { it.isNotEmpty() }
+        ?: if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
 }
 
 /**
@@ -183,6 +195,9 @@ private class BuildConfigWrapper : AppConfig {
     override val summarizationTemperature: Double = DefaultConfig.DEFAULT_SUMMARIZATION_TEMPERATURE
     override val summarizationSystemPrompt: String = DefaultConfig.DEFAULT_SUMMARIZATION_SYSTEM_PROMPT
     override val summarizationPrompt: String = DefaultConfig.DEFAULT_SUMMARIZATION_PROMPT
+    
+    override val memoryStoreType: String = DefaultConfig.DEFAULT_MEMORY_STORE_TYPE
+    override val memoryStorePath: String? = if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
 }
 
 /**
@@ -206,6 +221,9 @@ private class DefaultAppConfig : AppConfig {
     override val summarizationTemperature: Double = DefaultConfig.DEFAULT_SUMMARIZATION_TEMPERATURE
     override val summarizationSystemPrompt: String = DefaultConfig.DEFAULT_SUMMARIZATION_SYSTEM_PROMPT
     override val summarizationPrompt: String = DefaultConfig.DEFAULT_SUMMARIZATION_PROMPT
+    
+    override val memoryStoreType: String = DefaultConfig.DEFAULT_MEMORY_STORE_TYPE
+    override val memoryStorePath: String? = if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
 }
 
 /**
@@ -232,4 +250,7 @@ private class CompositeConfig(
     override val summarizationTemperature: Double get() = primary.summarizationTemperature
     override val summarizationSystemPrompt: String get() = primary.summarizationSystemPrompt.ifEmpty { fallback.summarizationSystemPrompt }
     override val summarizationPrompt: String get() = primary.summarizationPrompt.ifEmpty { fallback.summarizationPrompt }
+    
+    override val memoryStoreType: String get() = primary.memoryStoreType.ifEmpty { fallback.memoryStoreType }
+    override val memoryStorePath: String? get() = primary.memoryStorePath ?: fallback.memoryStorePath
 }

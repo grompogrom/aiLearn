@@ -1,5 +1,6 @@
 import core.config.ConfigLoader
 import core.conversation.ConversationManager
+import core.memory.MemoryStoreFactory
 import core.utils.use
 import api.provider.ProviderFactory
 import frontend.cli.CliFrontend
@@ -25,14 +26,25 @@ fun main() = runBlocking {
     
     // Create LLM provider (currently Perplexity, but can be easily switched)
     ProviderFactory.createFromConfig(config).use { provider ->
-        // Create frontend first to get summarization callback
-        val frontend = CliFrontend(config)
-        val summarizationCallback = frontend.createSummarizationCallback()
-        
-        // Create conversation manager with provider, config, and summarization callback
-        val conversationManager = ConversationManager(provider, config, summarizationCallback)
-        
-        // Start frontend with conversation manager
-        frontend.start(conversationManager)
+        // Create memory store for conversation persistence
+        MemoryStoreFactory.create(config).use { memoryStore ->
+            // Create frontend first to get summarization callback
+            val frontend = CliFrontend(config)
+            val summarizationCallback = frontend.createSummarizationCallback()
+            
+            // Create conversation manager with provider, config, summarization callback, and memory store
+            val conversationManager = ConversationManager(
+                provider, 
+                config, 
+                summarizationCallback,
+                memoryStore
+            )
+            
+            // Initialize conversation manager (loads history if available)
+            conversationManager.initialize()
+            
+            // Start frontend with conversation manager
+            frontend.start(conversationManager)
+        }
     }
 }

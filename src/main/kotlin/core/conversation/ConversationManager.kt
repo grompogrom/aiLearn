@@ -6,7 +6,11 @@ import core.domain.ChatResponse
 import core.domain.Message
 import core.domain.MessageRole
 import core.domain.TokenUsage
+import core.memory.MemoryStore
 import core.provider.LlmProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Callback type for summarization events.
@@ -21,11 +25,29 @@ typealias SummarizationCallback = (isStarting: Boolean) -> Unit
 class ConversationManager(
     private val llmProvider: LlmProvider,
     private val config: AppConfig,
-    private val summarizationCallback: SummarizationCallback? = null
+    private val summarizationCallback: SummarizationCallback? = null,
+    private val memoryStore: MemoryStore? = null
 ) {
-    private val messageHistory = mutableListOf<Message>().apply {
+    private val messageHistory = mutableListOf<Message>()
+    private val saveScope = CoroutineScope(Dispatchers.IO)
+    
+    /**
+     * Initializes the conversation manager by loading history from memory store if available.
+     * Should be called after construction if memory persistence is enabled.
+     */
+    suspend fun initialize() {
+        if (config.useMessageHistory && memoryStore != null) {
+            val loadedHistory = memoryStore.loadHistory()
+            if (loadedHistory.isNotEmpty()) {
+                messageHistory.clear()
+                messageHistory.addAll(loadedHistory)
+                return
+            }
+        }
+        
+        // If no history loaded, initialize with system prompt
         if (config.useMessageHistory) {
-            add(Message.create(MessageRole.SYSTEM, config.systemPrompt))
+            messageHistory.add(Message.create(MessageRole.SYSTEM, config.systemPrompt))
         }
     }
     
@@ -63,6 +85,9 @@ class ConversationManager(
             // (SYSTEM -> USER -> ASSISTANT pattern required by the API)
             messageHistory.clear()
             messageHistory.add(Message.create(MessageRole.SYSTEM, config.systemPrompt))
+            
+            // Save the new history state (system prompt only, summary will be in next user message)
+            saveHistoryAsync()
             
             // Notify that summarization is complete
             summarizationCallback?.invoke(false)
@@ -102,11 +127,31 @@ class ConversationManager(
     /**
      * Clears the conversation history.
      */
-    fun clearHistory() {
+    suspend fun clearHistory() {
         messageHistory.clear()
         lastResponseUsage = null
         if (config.useMessageHistory) {
             messageHistory.add(Message.create(MessageRole.SYSTEM, config.systemPrompt))
+            // Save the cleared state (with just system prompt)
+            if (memoryStore != null) {
+                try {
+                    memoryStore.clearHistory()
+                    // Save the new state with just system prompt
+                    memoryStore.saveHistory(messageHistory.toList())
+                } catch (e: Exception) {
+                    // Log error but don't crash - persistence is best effort
+                    System.err.println("Warning: Failed to save cleared history: ${e.message}")
+                }
+            }
+        } else {
+            // If message history is disabled, just clear the memory store
+            if (memoryStore != null) {
+                try {
+                    memoryStore.clearHistory()
+                } catch (e: Exception) {
+                    System.err.println("Warning: Failed to clear history: ${e.message}")
+                }
+            }
         }
     }
 
@@ -122,6 +167,8 @@ class ConversationManager(
     private suspend fun sendRequestInternal(userContent: String, temperature: Double?): ChatResponse {
         val request = if (config.useMessageHistory) {
             messageHistory.add(Message.create(MessageRole.USER, userContent))
+            // Save history after adding user message
+            saveHistoryAsync()
             createChatRequest(temperature ?: config.temperature)
         } else {
             val messages = listOf(
@@ -142,9 +189,27 @@ class ConversationManager(
             messageHistory.add(Message.create(MessageRole.ASSISTANT, response.content))
             // Store the response usage for the next summarization check
             lastResponseUsage = response.usage
+            // Save history after adding assistant response
+            saveHistoryAsync()
         }
 
         return response
+    }
+    
+    /**
+     * Saves history asynchronously without blocking the main flow.
+     */
+    private fun saveHistoryAsync() {
+        if (config.useMessageHistory && memoryStore != null) {
+            saveScope.launch {
+                try {
+                    memoryStore.saveHistory(messageHistory.toList())
+                } catch (e: Exception) {
+                    // Log error but don't crash - persistence is best effort
+                    System.err.println("Warning: Failed to save conversation history: ${e.message}")
+                }
+            }
+        }
     }
 
     private fun createChatRequest(temperature: Double): ChatRequest {

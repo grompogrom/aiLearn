@@ -29,6 +29,11 @@ src/main/kotlin/
 │   │   ├── ConversationManager.kt
 │   │   ├── ConversationSummarizer.kt
 │   │   └── TokenCostCalculator.kt
+│   ├── memory/                      # Persistent storage for conversation history
+│   │   ├── MemoryStore.kt           # Storage interface
+│   │   ├── JsonMemoryStore.kt       # JSON file implementation
+│   │   ├── SqliteMemoryStore.kt    # SQLite database implementation
+│   │   └── MemoryStoreFactory.kt    # Factory for creating stores
 │   ├── config/                      # Configuration management
 │   │   ├── AppConfig.kt
 │   │   └── ConfigLoader.kt
@@ -58,6 +63,9 @@ src/main/kotlin/
 - **ConversationManager**: Manages conversation state and handles chat requests with automatic summarization
 - **ConversationSummarizer**: Handles conversation summarization when token usage exceeds threshold
 - **TokenCostCalculator**: Calculates token costs and formats usage information
+- **MemoryStore**: Interface for persistent storage of conversation history
+- **JsonMemoryStore**: JSON file-based storage implementation
+- **SqliteMemoryStore**: SQLite database-based storage implementation
 
 **Key Design Decisions**:
 - No dependencies on external frameworks (Ktor, etc.)
@@ -117,6 +125,8 @@ src/main/kotlin/
 - `AILEARN_SUMMARIZATION_TEMPERATURE`: Temperature for summarization (default: 0.3)
 - `AILEARN_SUMMARIZATION_SYSTEM_PROMPT`: System prompt for summarization requests
 - `AILEARN_SUMMARIZATION_PROMPT`: Instruction prompt for summarization
+- `AILEARN_MEMORY_STORE_TYPE`: Type of memory store ("json" or "sqlite", default: "json")
+- `AILEARN_MEMORY_STORE_PATH`: Optional path for memory store file/database (default: current directory)
 
 **Config File Format** (`ailearn.config.properties`):
 ```properties
@@ -136,6 +146,8 @@ summarization.max.tokens=500
 summarization.temperature=0.3
 summarization.system.prompt=You are a helpful assistant that summarizes conversations concisely.
 summarization.prompt=Please provide a brief summary of the conversation so far, capturing the key topics, questions, and answers discussed. Keep it concise and focused on the main points.
+memory.store.type=json
+memory.store.path=ailearn.history.json
 ```
 
 ## SOLID Principles
@@ -210,6 +222,28 @@ Example:
 class HttpFrontend(config: AppConfig) : Frontend {
     override suspend fun start(conversationManager: ConversationManager) {
         // HTTP server implementation
+    }
+}
+```
+
+### Adding a New Memory Store
+
+1. Implement `MemoryStore` interface
+2. Add new type to `MemoryStoreFactory`
+3. Update configuration if needed
+
+Example:
+```kotlin
+// core/memory/PostgresMemoryStore.kt
+class PostgresMemoryStore(config: AppConfig) : MemoryStore {
+    // Implementation
+}
+
+// core/memory/MemoryStoreFactory.kt
+fun create(config: AppConfig): MemoryStore {
+    return when (config.memoryStoreType.lowercase()) {
+        "postgres" -> PostgresMemoryStore(config)
+        // ...
     }
 }
 ```

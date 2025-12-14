@@ -200,6 +200,8 @@ class ConversationSummarizerTest {
             override val summarizationTemperature: Double = summarizationTemperature
             override val summarizationSystemPrompt: String = summarizationSystemPrompt
             override val summarizationPrompt: String = summarizationPrompt
+            override val memoryStoreType: String = "json"
+            override val memoryStorePath: String? = null
         }
     }
 

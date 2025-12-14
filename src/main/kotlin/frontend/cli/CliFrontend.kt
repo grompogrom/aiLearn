@@ -16,6 +16,7 @@ class CliFrontend(
 ) : Frontend {
 
     private val exitCommands = setOf("exit", "quit")
+    private val clearHistoryCommands = setOf("/clear", "/clearhistory", "clear", "clearhistory")
     private val tokenCalculator = TokenCostCalculator(config)
 
     override suspend fun start(conversationManager: ConversationManager) {
@@ -30,6 +31,9 @@ class CliFrontend(
                 userInput.isExit -> {
                     println("Завершение работы...")
                     break
+                }
+                userInput.content.lowercase() in clearHistoryCommands -> {
+                    handleClearHistory(conversationManager)
                 }
                 else -> {
                     val shouldContinue = handleUserRequest(conversationManager, userInput.content)
@@ -59,6 +63,7 @@ class CliFrontend(
 
     private fun printWelcomeMessage() {
         println("\nВведите 'exit' или 'quit' для выхода в любой момент")
+        println("Введите '/clear' или '/clearhistory' для очистки истории диалога")
         println("temp is ${config.temperature}")
     }
 
@@ -77,6 +82,15 @@ class CliFrontend(
             else -> {
                 UserInput(content = input)
             }
+        }
+    }
+
+    private suspend fun handleClearHistory(conversationManager: ConversationManager) {
+        try {
+            conversationManager.clearHistory()
+            println("\n✓ История диалога успешно очищена.")
+        } catch (e: Exception) {
+            println("\n✗ Ошибка при очистке истории: ${e.message}")
         }
     }
 

@@ -230,6 +230,8 @@ class ConversationManagerSummarizationTest {
             override val summarizationTemperature: Double = 0.3
             override val summarizationSystemPrompt: String = "You are a summarizer"
             override val summarizationPrompt: String = "Summarize this conversation"
+            override val memoryStoreType: String = "json"
+            override val memoryStorePath: String? = null
         }
     }
 

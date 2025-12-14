@@ -1,8 +1,11 @@
 package core.domain
 
+import kotlinx.serialization.Serializable
+
 /**
  * Represents a message in a conversation with role and content.
  */
+@Serializable
 data class Message(
     val role: MessageRole,
     val content: String,
