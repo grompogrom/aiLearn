@@ -36,6 +36,12 @@ interface AppConfig {
      * If not specified, uses default location in current working directory.
      */
     val memoryStorePath: String?
+
+    // MCP (Model Context Protocol) SSE configuration
+    val mcpSseProtocol: String
+    val mcpSseHost: String
+    val mcpSsePort: Int
+    val mcpRequestTimeoutMillis: Long
 }
 
 /**
@@ -63,4 +69,11 @@ object DefaultConfig {
     // Memory store defaults
     const val DEFAULT_MEMORY_STORE_TYPE = "json"
     const val DEFAULT_MEMORY_STORE_PATH = ""  // Empty string means use default location
+
+    // MCP defaults
+    const val DEFAULT_MCP_SSE_PROTOCOL = "http"
+    const val DEFAULT_MCP_SSE_HOST = ""
+    const val DEFAULT_MCP_SSE_PORT = 3002
+    const val DEFAULT_MCP_SSE_PATH = "/sse"
+    const val DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS = 15_000L
 }

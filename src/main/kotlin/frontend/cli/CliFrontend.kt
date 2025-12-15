@@ -4,6 +4,9 @@ import core.config.AppConfig
 import core.conversation.ConversationManager
 import core.conversation.TokenCostCalculator
 import core.domain.ChatResponse
+import core.mcp.McpError
+import core.mcp.McpResult
+import core.mcp.McpService
 import frontend.Frontend
 import frontend.UserInput
 import frontend.UserOutput
@@ -12,11 +15,13 @@ import frontend.UserOutput
  * Command-line interface frontend implementation.
  */
 class CliFrontend(
-    private val config: AppConfig
+    private val config: AppConfig,
+    private val mcpService: McpService? = null
 ) : Frontend {
 
     private val exitCommands = setOf("exit", "quit")
     private val clearHistoryCommands = setOf("/clear", "/clearhistory", "clear", "clearhistory")
+    private val mcpCommands = setOf("/mcp")
     private val tokenCalculator = TokenCostCalculator(config)
 
     override suspend fun start(conversationManager: ConversationManager) {
@@ -34,6 +39,9 @@ class CliFrontend(
                 }
                 userInput.content.lowercase() in clearHistoryCommands -> {
                     handleClearHistory(conversationManager)
+                }
+                userInput.content.lowercase() in mcpCommands -> {
+                    handleMcpCommand()
                 }
                 else -> {
                     val shouldContinue = handleUserRequest(conversationManager, userInput.content)
@@ -69,7 +77,12 @@ class CliFrontend(
 
     private fun readUserInput(): UserInput? {
         print("\nВвод: ")
-        val input = readln().trim()
+        val input = try {
+            readln()
+        } catch (e: Exception) {
+            println("\nEOF reached. Завершение работы...")
+            return UserInput(content = "", isExit = true)
+        }.trim()
 
         return when {
             input.isBlank() -> {
@@ -91,6 +104,59 @@ class CliFrontend(
             println("\n✓ История диалога успешно очищена.")
         } catch (e: Exception) {
             println("\n✗ Ошибка при очистке истории: ${e.message}")
+        }
+    }
+
+    private suspend fun handleMcpCommand() {
+        val service = mcpService
+        if (service == null) {
+            println("\nMCP сервер не настроен. Убедитесь, что заданы переменные окружения AILEARN_MCP_SSE_HOST и связанные настройки.")
+            return
+        }
+
+        println("\nЗапрос списка доступных MCP инструментов...")
+
+        when (val result = service.getAvailableTools()) {
+            is McpResult.Success -> {
+                val tools = result.value
+                if (tools.isEmpty()) {
+                    println("MCP сервер не вернул ни одного инструмента.")
+                    return
+                }
+
+                println("\n=== MCP инструменты ===")
+                tools.forEachIndexed { index, tool ->
+                    println("${index + 1}. ${tool.name}")
+                    tool.description?.takeIf { it.isNotBlank() }?.let {
+                        println("   Описание: $it")
+                    }
+                    tool.inputSchema?.takeIf { it.isNotBlank() }?.let {
+                        println("   Входная схема: $it")
+                    }
+                    println()
+                }
+                println("=======================")
+            }
+            is McpResult.Error -> {
+                when (val error = result.error) {
+                    is McpError.NotConfigured -> {
+                        println("\nMCP сервер не настроен: ${error.message}")
+                    }
+                    is McpError.ConnectionFailed -> {
+                        println("\nНе удалось подключиться к MCP серверу: ${error.message}")
+                    }
+                    is McpError.Timeout -> {
+                        println("\nТаймаут при обращении к MCP серверу: ${error.message}")
+                    }
+                    is McpError.ServerError -> {
+                        println("\nMCP сервер вернул ошибку: ${error.message}")
+                    }
+                    is McpError.InvalidResponse -> {
+                        println("\nНекорректный ответ MCP сервера: ${error.message}")
+                    }
+                }
+                println("Вы можете проверить настройки MCP сервера и попробовать снова.")
+            }
         }
     }
 

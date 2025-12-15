@@ -3,6 +3,9 @@ import core.conversation.ConversationManager
 import core.memory.MemoryStoreFactory
 import core.utils.use
 import api.provider.ProviderFactory
+import api.mcp.McpSseClient
+import api.mcp.McpServiceImpl
+import core.mcp.McpService
 import frontend.cli.CliFrontend
 import kotlinx.coroutines.runBlocking
 
@@ -24,27 +27,32 @@ fun main() = runBlocking {
         return@runBlocking
     }
     
-    // Create LLM provider (currently Perplexity, but can be easily switched)
-    ProviderFactory.createFromConfig(config).use { provider ->
-        // Create memory store for conversation persistence
-        MemoryStoreFactory.create(config).use { memoryStore ->
-            // Create frontend first to get summarization callback
-            val frontend = CliFrontend(config)
-            val summarizationCallback = frontend.createSummarizationCallback()
-            
-            // Create conversation manager with provider, config, summarization callback, and memory store
-            val conversationManager = ConversationManager(
-                provider, 
-                config, 
-                summarizationCallback,
-                memoryStore
-            )
-            
-            // Initialize conversation manager (loads history if available)
-            conversationManager.initialize()
-            
-            // Start frontend with conversation manager
-            frontend.start(conversationManager)
+    // Create MCP client and service (optional, depends on configuration)
+    McpSseClient(config).use { mcpClient ->
+        val mcpService: McpService = McpServiceImpl(mcpClient)
+
+        // Create LLM provider (currently Perplexity, but can be easily switched)
+        ProviderFactory.createFromConfig(config).use { provider ->
+            // Create memory store for conversation persistence
+            MemoryStoreFactory.create(config).use { memoryStore ->
+                // Create frontend first to get summarization callback
+                val frontend = CliFrontend(config, mcpService)
+                val summarizationCallback = frontend.createSummarizationCallback()
+
+                // Create conversation manager with provider, config, summarization callback, and memory store
+                val conversationManager = ConversationManager(
+                    provider,
+                    config,
+                    summarizationCallback,
+                    memoryStore
+                )
+
+                // Initialize conversation manager (loads history if available)
+                conversationManager.initialize()
+
+                // Start frontend with conversation manager
+                frontend.start(conversationManager)
+            }
         }
     }
 }

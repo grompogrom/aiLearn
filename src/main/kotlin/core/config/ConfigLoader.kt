@@ -97,6 +97,19 @@ private class EnvironmentConfig : AppConfig {
     override val memoryStorePath: String?
         get() = System.getenv("AILEARN_MEMORY_STORE_PATH")?.takeIf { it.isNotEmpty() }
             ?: if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
+
+    override val mcpSseProtocol: String
+        get() = System.getenv("AILEARN_MCP_SSE_PROTOCOL") ?: DefaultConfig.DEFAULT_MCP_SSE_PROTOCOL
+
+    override val mcpSseHost: String
+        get() = "http://127.0.0.1"
+
+    override val mcpSsePort: Int
+        get() = 3001
+
+    override val mcpRequestTimeoutMillis: Long
+        get() = System.getenv("AILEARN_MCP_REQUEST_TIMEOUT_MILLIS")?.toLongOrNull()
+            ?: DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS
 }
 
 /**
@@ -145,6 +158,11 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val memoryStoreType: String get() = getString("memory.store.type", DefaultConfig.DEFAULT_MEMORY_STORE_TYPE)
     override val memoryStorePath: String? get() = properties.getProperty("memory.store.path")?.takeIf { it.isNotEmpty() }
         ?: if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
+
+    override val mcpSseProtocol: String get() = getString("mcp.sse.protocol", DefaultConfig.DEFAULT_MCP_SSE_PROTOCOL)
+    override val mcpSseHost: String get() = getString("mcp.sse.host", DefaultConfig.DEFAULT_MCP_SSE_HOST)
+    override val mcpSsePort: Int get() = getInt("mcp.sse.port", DefaultConfig.DEFAULT_MCP_SSE_PORT)
+    override val mcpRequestTimeoutMillis: Long get() = getLong("mcp.request.timeout.millis", DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS)
 }
 
 /**
@@ -198,6 +216,11 @@ private class BuildConfigWrapper : AppConfig {
     
     override val memoryStoreType: String = DefaultConfig.DEFAULT_MEMORY_STORE_TYPE
     override val memoryStorePath: String? = if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
+
+    override val mcpSseProtocol: String = DefaultConfig.DEFAULT_MCP_SSE_PROTOCOL
+    override val mcpSseHost: String = DefaultConfig.DEFAULT_MCP_SSE_HOST
+    override val mcpSsePort: Int = DefaultConfig.DEFAULT_MCP_SSE_PORT
+    override val mcpRequestTimeoutMillis: Long = DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS
 }
 
 /**
@@ -224,6 +247,11 @@ private class DefaultAppConfig : AppConfig {
     
     override val memoryStoreType: String = DefaultConfig.DEFAULT_MEMORY_STORE_TYPE
     override val memoryStorePath: String? = if (DefaultConfig.DEFAULT_MEMORY_STORE_PATH.isEmpty()) null else DefaultConfig.DEFAULT_MEMORY_STORE_PATH
+
+    override val mcpSseProtocol: String = DefaultConfig.DEFAULT_MCP_SSE_PROTOCOL
+    override val mcpSseHost: String = DefaultConfig.DEFAULT_MCP_SSE_HOST
+    override val mcpSsePort: Int = DefaultConfig.DEFAULT_MCP_SSE_PORT
+    override val mcpRequestTimeoutMillis: Long = DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS
 }
 
 /**
@@ -253,4 +281,9 @@ private class CompositeConfig(
     
     override val memoryStoreType: String get() = primary.memoryStoreType.ifEmpty { fallback.memoryStoreType }
     override val memoryStorePath: String? get() = primary.memoryStorePath ?: fallback.memoryStorePath
+
+    override val mcpSseProtocol: String get() = primary.mcpSseProtocol.ifEmpty { fallback.mcpSseProtocol }
+    override val mcpSseHost: String get() = primary.mcpSseHost.ifEmpty { fallback.mcpSseHost }
+    override val mcpSsePort: Int get() = if (primary.mcpSsePort > 0) primary.mcpSsePort else fallback.mcpSsePort
+    override val mcpRequestTimeoutMillis: Long get() = if (primary.mcpRequestTimeoutMillis > 0) primary.mcpRequestTimeoutMillis else fallback.mcpRequestTimeoutMillis
 }

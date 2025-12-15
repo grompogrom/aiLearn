@@ -13,12 +13,13 @@ repositories {
 }
 
 dependencies {
-    implementation("io.ktor:ktor-client-core:2.3.12")
-    implementation("io.ktor:ktor-client-cio:2.3.12")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.12")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.12")
+    implementation("io.ktor:ktor-client-core:3.3.2")
+    implementation("io.ktor:ktor-client-cio:3.3.2")
+    implementation("io.ktor:ktor-client-content-negotiation:3.3.2")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:3.3.2")
     implementation("org.slf4j:slf4j-simple:2.0.13")
     implementation("org.xerial:sqlite-jdbc:3.44.1.0")
+    implementation("io.modelcontextprotocol:kotlin-sdk-client:0.8.1")
     testImplementation(kotlin("test"))
 }
 
