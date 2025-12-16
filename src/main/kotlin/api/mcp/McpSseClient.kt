@@ -1,6 +1,5 @@
 package api.mcp
 
-import core.config.AppConfig
 import core.mcp.McpError
 import core.mcp.McpResult
 import core.mcp.McpToolInfo
@@ -19,12 +18,12 @@ import kotlinx.coroutines.TimeoutCancellationException
  * Infrastructure client for communicating with an MCP server over HTTP SSE.
  *
  * Responsibilities:
- * - Establish SSE connection using configuration
+ * - Establish SSE connection using server configuration
  * - Read events and delegate parsing to [McpSseResponseParser]
  * - Surface results as domain-level [McpResult] without throwing unchecked exceptions
  */
 class McpSseClient(
-    private val config: AppConfig
+    private val serverConfig: McpServerConfig
 ) : AutoCloseable {
 
     private val client = HttpClient(CIO) {
@@ -33,7 +32,7 @@ class McpSseClient(
             json()
         }
         install(HttpTimeout) {
-            requestTimeoutMillis = config.mcpRequestTimeoutMillis
+            requestTimeoutMillis = serverConfig.requestTimeoutMillis
         }
     }
 
@@ -48,15 +47,14 @@ class McpSseClient(
      */
     suspend fun listTools(): McpResult<List<McpToolInfo>> {
         return try {
-            // Базовый URL MCP SSE-сервера (без /sse и /messages — SDK добавит их сам)
             val transport = SseClientTransport(
                 client = client,
-                urlString = "${config.mcpSseHost}:${config.mcpSsePort}/sse",
+                urlString = serverConfig.getSseUrl(),
             )
 
             val client = Client(
                 clientInfo = Implementation(
-                    name = "demo-mcp-client",
+                    name = serverConfig.id,
                     version = "1.0.0",
                 )
             )

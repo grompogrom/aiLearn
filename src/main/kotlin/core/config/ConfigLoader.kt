@@ -105,7 +105,7 @@ private class EnvironmentConfig : AppConfig {
         get() = "http://127.0.0.1"
 
     override val mcpSsePort: Int
-        get() = 3001
+        get() = 3002
 
     override val mcpRequestTimeoutMillis: Long
         get() = System.getenv("AILEARN_MCP_REQUEST_TIMEOUT_MILLIS")?.toLongOrNull()

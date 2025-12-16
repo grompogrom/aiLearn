@@ -3,6 +3,8 @@ import core.conversation.ConversationManager
 import core.memory.MemoryStoreFactory
 import core.utils.use
 import api.provider.ProviderFactory
+import api.mcp.McpClientsManager
+import api.mcp.McpConfig
 import api.mcp.McpSseClient
 import api.mcp.McpServiceImpl
 import core.mcp.McpService
@@ -27,9 +29,14 @@ fun main() = runBlocking {
         return@runBlocking
     }
     
-    // Create MCP client and service (optional, depends on configuration)
-    McpSseClient(config).use { mcpClient ->
-        val mcpService: McpService = McpServiceImpl(mcpClient)
+    // Create MCP clients for all configured servers
+    val mcpClients = McpConfig.servers.map { serverConfig ->
+        McpSseClient(serverConfig)
+    }
+    
+    // Use all MCP clients and create service
+    McpClientsManager(mcpClients).use {
+        val mcpService: McpService = McpServiceImpl(mcpClients)
 
         // Create LLM provider (currently Perplexity, but can be easily switched)
         ProviderFactory.createFromConfig(config).use { provider ->
