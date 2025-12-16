@@ -36,6 +36,10 @@ class JsonMemoryStoreTest {
         override val summarizationPrompt: String = "Summarize this"
         override val memoryStoreType: String = "json"
         override val memoryStorePath: String? = testFile.absolutePath
+        override val mcpSseProtocol: String = "http"
+        override val mcpSseHost: String = ""
+        override val mcpSsePort: Int = 3002
+        override val mcpRequestTimeoutMillis: Long = 15000
     }
     
     @AfterTest

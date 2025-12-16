@@ -35,53 +35,23 @@ object ToolRequestParser {
      * Returns empty list if no tool requests are found.
      */
     fun parseToolRequests(responseText: String): List<ToolRequest> {
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ToolRequestParser.kt:37","message":"parseToolRequests entry","data":{"responseTextLength":${responseText.length},"responsePreview":${responseText.take(300).replace("\"", "\\\"")}},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
-        
         val requests = mutableListOf<ToolRequest>()
         
         // Try to extract JSON from markdown code blocks
         val jsonText = extractJsonFromMarkdown(responseText) ?: responseText
         
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ToolRequestParser.kt:45","message":"Extracted JSON text","data":{"jsonTextLength":${jsonText.length},"jsonTextPreview":${jsonText.take(200).replace("\"", "\\\"")}},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
-        
         // Try parsing as single object
         parseAsSingleObject(jsonText)?.let { requests.add(it) }
-        
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ToolRequestParser.kt:49","message":"After single object parse","data":{"requestsCount":${requests.size}},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
         
         // Try parsing as array
         if (requests.isEmpty()) {
             requests.addAll(parseAsArray(jsonText))
         }
         
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ToolRequestParser.kt:53","message":"After array parse","data":{"requestsCount":${requests.size}},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
-        
         // Try parsing inline JSON patterns
         if (requests.isEmpty()) {
             requests.addAll(parseInlinePatterns(responseText))
         }
-        
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ToolRequestParser.kt:58","message":"parseToolRequests exit","data":{"finalRequestsCount":${requests.size},"toolNames":${requests.map { it.toolName }}},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
         
         return requests
     }

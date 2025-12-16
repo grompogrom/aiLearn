@@ -117,38 +117,18 @@ class ConversationManager(
      * Processes a request, using tool calling if available, otherwise normal flow.
      */
     private suspend fun processRequest(userContent: String, temperature: Double?): ChatResponse {
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:119","message":"processRequest entry","data":{"hasToolHandler":${toolCallingHandler != null},"useMessageHistory":${config.useMessageHistory},"userContentLength":${userContent.length}},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
         // Use tool calling handler if available and message history is enabled
         if (toolCallingHandler != null && config.useMessageHistory) {
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:125","message":"Calling processWithTools","data":{},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
             val response = toolCallingHandler.processWithTools(
                 userContent,
                 messageHistory,
                 temperature
             )
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:133","message":"processWithTools returned","data":{"responseContentLength":${response.content.length},"hasUsage":${response.usage != null}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
             // Track usage
             lastResponseUsage = response.usage
             saveHistoryAsync()
             return response
         } else {
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:142","message":"Using normal flow (no tool calling)","data":{},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
             // Normal flow without tools
             return sendRequestInternal(userContent, temperature)
         }

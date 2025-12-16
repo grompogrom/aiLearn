@@ -30,6 +30,10 @@ class MemoryStoreFactoryTest {
             override val summarizationPrompt: String = "Summarize this"
             override val memoryStoreType: String = memoryStoreType
             override val memoryStorePath: String? = null
+            override val mcpSseProtocol: String = "http"
+            override val mcpSseHost: String = ""
+            override val mcpSsePort: Int = 3002
+            override val mcpRequestTimeoutMillis: Long = 15000
         }
     }
     
