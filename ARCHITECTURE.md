@@ -28,7 +28,11 @@ src/main/kotlin/
 │   ├── conversation/                # Business logic
 │   │   ├── ConversationManager.kt
 │   │   ├── ConversationSummarizer.kt
-│   │   └── TokenCostCalculator.kt
+│   │   ├── TokenCostCalculator.kt
+│   │   ├── ToolCallingHandler.kt    # Handles tool calling loop
+│   │   └── ToolRequestParser.kt     # Parses tool requests from LLM
+│   ├── mcp/                         # MCP (Model Context Protocol) domain
+│   │   └── McpModels.kt             # MCP domain models and service interface
 │   ├── memory/                      # Persistent storage for conversation history
 │   │   ├── MemoryStore.kt           # Storage interface
 │   │   ├── JsonMemoryStore.kt       # JSON file implementation
@@ -42,10 +46,16 @@ src/main/kotlin/
 ├── api/                             # API implementations
 │   ├── provider/
 │   │   └── ProviderFactory.kt       # Factory for creating providers
-│   └── perplexity/                  # Perplexity API implementation
-│       ├── PerplexityModels.kt      # API-specific models
-│       ├── PerplexityAdapter.kt     # Adapter between domain and API models
-│       └── PerplexityProvider.kt    # Perplexity implementation
+│   ├── perplexity/                  # Perplexity API implementation
+│   │   ├── PerplexityModels.kt      # API-specific models
+│   │   ├── PerplexityAdapter.kt     # Adapter between domain and API models
+│   │   └── PerplexityProvider.kt    # Perplexity implementation
+│   └── mcp/                         # MCP server integration
+│       ├── McpConfig.kt             # MCP server configuration
+│       ├── McpSseClient.kt          # SSE client for MCP servers
+│       ├── McpServiceImpl.kt        # MCP service implementation
+│       ├── McpSseModels.kt          # MCP SSE protocol models
+│       └── McpSseResponseParser.kt  # Parser for MCP responses
 └── frontend/                        # Frontend implementations
     ├── Frontend.kt                  # Frontend interface
     └── cli/
@@ -60,9 +70,12 @@ src/main/kotlin/
 
 - **Domain Models**: Pure data classes representing core concepts (Message, ChatRequest, ChatResponse, etc.)
 - **LlmProvider Interface**: Abstraction for LLM providers, allowing easy swapping of providers
-- **ConversationManager**: Manages conversation state and handles chat requests with automatic summarization
+- **ConversationManager**: Manages conversation state and handles chat requests with automatic summarization and tool calling
 - **ConversationSummarizer**: Handles conversation summarization when token usage exceeds threshold
 - **TokenCostCalculator**: Calculates token costs and formats usage information
+- **ToolCallingHandler**: Manages the iterative tool calling loop (LLM → Tool Request → Tool Execution → LLM → Final Answer)
+- **ToolRequestParser**: Parses tool requests from LLM responses in various JSON formats
+- **McpService Interface**: Abstraction for MCP (Model Context Protocol) server interactions
 - **MemoryStore**: Interface for persistent storage of conversation history
 - **JsonMemoryStore**: JSON file-based storage implementation
 - **SqliteMemoryStore**: SQLite database-based storage implementation
@@ -74,16 +87,22 @@ src/main/kotlin/
 
 ### API Layer
 
-**Purpose**: Implements LLM provider interfaces for specific APIs.
+**Purpose**: Implements LLM provider interfaces for specific APIs and MCP server integration.
 
 - **ProviderFactory**: Creates provider instances based on configuration
 - **PerplexityProvider**: Perplexity AI API implementation
 - **Adapters**: Convert between domain models and API-specific models
+- **McpServiceImpl**: Coordinates access to multiple MCP servers
+- **McpSseClient**: SSE-based client for communicating with MCP servers
+- **McpConfig**: Configuration for MCP servers (host, port, baseUrl, timeout)
+- **McpSseResponseParser**: Parses MCP server responses
 
 **Key Design Decisions**:
 - Each provider has its own models (allowing for API-specific differences)
 - Adapters handle conversion between domain and API models
 - Providers implement `LlmProvider` interface and `AutoCloseable` for resource management
+- MCP integration uses SSE (Server-Sent Events) for real-time communication
+- MCP clients support connection reuse for efficiency
 - Easy to add new providers (OpenAI, Google, etc.) without changing core logic
 
 ### Frontend Layer
@@ -128,6 +147,13 @@ src/main/kotlin/
 - `AILEARN_MEMORY_STORE_TYPE`: Type of memory store ("json" or "sqlite", default: "json")
 - `AILEARN_MEMORY_STORE_PATH`: Optional path for memory store file/database (default: current directory)
 
+**MCP Configuration**:
+MCP servers are configured in code via `McpConfig.kt`. Each server can be configured with:
+- `id`: Unique identifier for the server
+- `host` and `port`: Server address (alternative to baseUrl)
+- `baseUrl`: Full base URL for the server (takes precedence over host/port)
+- `requestTimeoutMillis`: Request timeout in milliseconds (default: 15000)
+
 **Config File Format** (`ailearn.config.properties`):
 ```properties
 api.key=your_api_key
@@ -157,6 +183,9 @@ memory.store.path=ailearn.history.json
 - `ConversationManager` manages conversations and triggers summarization when needed
 - `ConversationSummarizer` handles conversation summarization logic
 - `TokenCostCalculator` calculates costs
+- `ToolCallingHandler` manages the tool calling loop
+- `ToolRequestParser` parses tool requests from LLM responses
+- `McpSseClient` handles MCP server communication
 - `PerplexityProvider` handles Perplexity API communication
 - `CliFrontend` handles CLI interaction
 
@@ -248,6 +277,71 @@ fun create(config: AppConfig): MemoryStore {
 }
 ```
 
+## MCP Integration and Tool Calling
+
+### Overview
+
+The application integrates with **MCP (Model Context Protocol)** servers to enable tool calling functionality. Since Perplexity API doesn't natively support function calling, a custom tool calling layer was implemented.
+
+### Tool Calling Flow
+
+1. **User sends message** → `ConversationManager.sendRequest()`
+2. **Tool calling handler activated** → `ToolCallingHandler.processWithTools()`
+3. **System prompt enhanced** → Available tools are described to the LLM
+4. **LLM processes request** → May respond with tool requests in JSON format
+5. **Tool requests parsed** → `ToolRequestParser` extracts tool calls from LLM response
+6. **Tools executed** → `McpService.callTool()` executes tools via MCP servers
+7. **Results sent back** → Tool results formatted and sent to LLM as user message
+8. **LLM provides final answer** → Loop continues until no more tool requests
+
+### Components
+
+#### ToolCallingHandler
+- Manages the iterative tool calling loop
+- Enhances system prompt with available tool descriptions
+- Executes tools and formats results for LLM consumption
+- Prevents infinite loops with max iteration limit (10)
+
+#### ToolRequestParser
+- Parses tool requests from LLM responses
+- Supports multiple JSON formats:
+  - Single object: `{"tool": "tool_name", "arguments": {...}}`
+  - Array: `[{"tool": "tool1", "arguments": {...}}]`
+  - Markdown code blocks with JSON
+  - Inline patterns
+
+#### McpService
+- Interface for MCP server interactions
+- Methods:
+  - `getAvailableTools()`: Retrieves list of available tools
+  - `callTool(toolName, arguments)`: Executes a tool with given arguments
+
+#### McpSseClient
+- SSE-based client for MCP servers
+- Maintains persistent connections for efficiency
+- Handles connection lifecycle and error recovery
+
+### Configuration
+
+MCP servers are configured in `api/mcp/McpConfig.kt`:
+
+```kotlin
+val servers: List<McpServerConfig> = listOf(
+    McpServerConfig(
+        id = "default",
+        baseUrl = "http://127.0.0.1:3002/sse",
+        requestTimeoutMillis = 15_000L
+    )
+)
+```
+
+### Tool Calling Behavior
+
+- **Automatic**: Tool calling is automatically enabled when MCP service is available and message history is enabled
+- **Iterative**: The system continues the loop until LLM provides a final answer (no tool requests)
+- **Error Handling**: Tool execution errors are formatted and sent back to LLM for handling
+- **Transparent**: Users see the final answer, not intermediate tool requests
+
 ## Testing Strategy
 
 The architecture supports easy testing:
@@ -273,3 +367,5 @@ The old files (`ApiClient.kt`, `Config.kt`, old `Main.kt`) are preserved for ref
 4. **Maintainability**: Small, focused classes
 5. **Flexibility**: Configuration from multiple sources
 6. **Scalability**: Architecture supports growth
+7. **Tool Calling**: Custom tool calling layer enables MCP integration with any LLM provider
+8. **MCP Integration**: Standardized protocol for tool and data access

@@ -2,7 +2,7 @@
 
 ## Overview
 
-**aiLearn** is a Kotlin-based terminal application that provides an interactive chat interface with Perplexity AI API. The application enables users to have conversational interactions with an AI assistant, with support for message history management, token usage tracking, and configurable dialog behavior.
+**aiLearn** is a Kotlin-based terminal application that provides an interactive chat interface with Perplexity AI API. The application enables users to have conversational interactions with an AI assistant, with support for message history management, token usage tracking, configurable dialog behavior, and **MCP (Model Context Protocol) tool calling integration**.
 
 ## Project Purpose
 
@@ -12,34 +12,51 @@ The application serves as a learning tool and interactive AI assistant that:
 - Supports both stateful (with history) and stateless (independent) requests
 - Provides a clean terminal-based user interface
 - Handles API errors gracefully with detailed error reporting
+- **Integrates with MCP servers for tool calling functionality**
+- **Automatically executes tools requested by the LLM and returns results**
 
 ## Technology Stack
 
 - **Language**: Kotlin 2.2.10
 - **Build Tool**: Gradle with Kotlin DSL
-- **HTTP Client**: Ktor 2.3.12 (CIO engine)
+- **HTTP Client**: Ktor 3.3.2 (CIO engine)
 - **Serialization**: Kotlinx Serialization (JSON)
 - **Concurrency**: Kotlin Coroutines
 - **Logging**: SLF4J Simple
 - **Java Version**: JVM 21
 - **API**: Perplexity AI Chat Completions API
+- **MCP SDK**: Model Context Protocol Kotlin SDK 0.8.1
 
 ## Project Structure
 
+The project follows Clean Architecture principles. See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
+
 ```
 src/main/kotlin/
-├── Main.kt                    # Application entry point, CLI loop
-├── ApiClient.kt              # HTTP client wrapper for Perplexity API
-├── ApiException.kt           # Sealed class hierarchy for API errors
-├── Config.kt                 # Centralized configuration constants
-├── models/
-│   ├── ApiResponse.kt        # Internal response wrapper (content + usage)
-│   ├── ChatRequest.kt        # API request models (Message, ChatRequest)
-│   ├── ChatResponse.kt       # API response models (Usage, Choice, etc.)
-│   ├── MessageRole.kt        # Enum for message roles (SYSTEM, USER, ASSISTANT)
-│   └── AiResponse.kt         # Legacy model (currently unused)
-└── utils/
-    └── StringExtensions.kt   # Extension functions for string manipulation
+├── Main.kt                          # Application entry point
+├── core/                            # Core business logic
+│   ├── domain/                      # Domain models
+│   ├── provider/                    # LLM provider interface
+│   ├── conversation/                # Business logic
+│   │   ├── ConversationManager.kt
+│   │   ├── ConversationSummarizer.kt
+│   │   ├── TokenCostCalculator.kt
+│   │   ├── ToolCallingHandler.kt    # Tool calling loop management
+│   │   └── ToolRequestParser.kt     # Parses tool requests from LLM
+│   ├── mcp/                         # MCP domain models
+│   ├── memory/                      # Persistent storage
+│   ├── config/                      # Configuration management
+│   └── utils/                       # Core utilities
+├── api/                             # API implementations
+│   ├── provider/                     # Provider factory
+│   ├── perplexity/                  # Perplexity API implementation
+│   └── mcp/                         # MCP server integration
+│       ├── McpConfig.kt
+│       ├── McpSseClient.kt
+│       ├── McpServiceImpl.kt
+│       └── McpSseModels.kt
+└── frontend/                        # Frontend implementations
+    └── cli/                         # CLI frontend
 ```
 
 ## Core Components
@@ -204,10 +221,12 @@ src/main/kotlin/
 ## Dependencies
 
 ### Runtime
-- `io.ktor:ktor-client-core:2.3.12`
-- `io.ktor:ktor-client-cio:2.3.12`
-- `io.ktor:ktor-client-content-negotiation:2.3.12`
-- `io.ktor:ktor-serialization-kotlinx-json:2.3.12`
+- `io.ktor:ktor-client-core:3.3.2`
+- `io.ktor:ktor-client-cio:3.3.2`
+- `io.ktor:ktor-client-content-negotiation:3.3.2`
+- `io.ktor:ktor-serialization-kotlinx-json:3.3.2`
+- `io.ktor:ktor-client-sse:3.3.2` - SSE support for MCP
+- `io.modelcontextprotocol:kotlin-sdk-client:0.8.1` - MCP SDK
 - `org.slf4j:slf4j-simple:2.0.13`
 
 ### Build
@@ -225,6 +244,12 @@ src/main/kotlin/
 8. ✅ JSON serialization/deserialization
 9. ✅ System prompt configuration
 10. ✅ Temperature and max_tokens per-request configuration
+11. ✅ **MCP (Model Context Protocol) integration**
+12. ✅ **Automatic tool calling with iterative execution loop**
+13. ✅ **Tool request parsing from LLM responses**
+14. ✅ **Multiple MCP server support**
+15. ✅ **Persistent conversation history (JSON/SQLite)**
+16. ✅ **Automatic conversation summarization**
 
 ## Design Decisions
 
@@ -248,6 +273,44 @@ src/main/kotlin/
 - Clear error hierarchy
 - Better IDE support
 
+## MCP Integration and Tool Calling
+
+### Overview
+
+The application integrates with **MCP (Model Context Protocol)** servers to enable tool calling functionality. Since Perplexity API doesn't natively support function calling, a custom tool calling layer was implemented.
+
+### How It Works
+
+1. **User sends message** → The message is processed by `ConversationManager`
+2. **Tool calling activated** → If MCP service is available, `ToolCallingHandler` manages the flow
+3. **System prompt enhanced** → Available tools from MCP servers are described to the LLM
+4. **LLM responds** → May include tool requests in JSON format: `{"tool": "tool_name", "arguments": {...}}`
+5. **Tools executed** → `ToolRequestParser` extracts tool calls, `McpService` executes them
+6. **Results processed** → Tool results are sent back to LLM as a user message
+7. **Final answer** → LLM processes tool results and provides the final answer
+
+### Tool Request Formats
+
+The parser supports multiple formats:
+- Single object: `{"tool": "tool_name", "arguments": {"param": "value"}}`
+- Array: `[{"tool": "tool1", "arguments": {...}}]`
+- Markdown code blocks: `` ```json {"tool": "tool_name", "arguments": {...}} ``` ``
+- Inline patterns: `CALL_TOOL: tool_name({"arg": "value"})`
+
+### Configuration
+
+MCP servers are configured in `api/mcp/McpConfig.kt`:
+
+```kotlin
+val servers: List<McpServerConfig> = listOf(
+    McpServerConfig(
+        id = "default",
+        baseUrl = "http://127.0.0.1:3002/sse",
+        requestTimeoutMillis = 15_000L
+    )
+)
+```
+
 ## Potential Improvements & Extension Points
 
 ### Features
@@ -265,6 +328,8 @@ src/main/kotlin/
 - [ ] Response formatting (markdown, HTML)
 - [ ] Search results display
 - [ ] Video results display
+- [ ] MCP server discovery
+- [ ] Tool result caching
 
 ### Refactoring Opportunities
 - [ ] Extract CLI logic to separate class
