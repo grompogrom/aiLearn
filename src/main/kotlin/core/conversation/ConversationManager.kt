@@ -6,6 +6,7 @@ import core.domain.ChatResponse
 import core.domain.Message
 import core.domain.MessageRole
 import core.domain.TokenUsage
+import core.mcp.McpService
 import core.memory.MemoryStore
 import core.provider.LlmProvider
 import kotlinx.coroutines.CoroutineScope
@@ -26,10 +27,16 @@ class ConversationManager(
     private val llmProvider: LlmProvider,
     private val config: AppConfig,
     private val summarizationCallback: SummarizationCallback? = null,
-    private val memoryStore: MemoryStore? = null
+    private val memoryStore: MemoryStore? = null,
+    private val mcpService: McpService? = null
 ) {
     private val messageHistory = mutableListOf<Message>()
     private val saveScope = CoroutineScope(Dispatchers.IO)
+    
+    // Tool calling handler - created if MCP service is available
+    private val toolCallingHandler = mcpService?.let {
+        ToolCallingHandler(llmProvider, config, it)
+    }
     
     /**
      * Initializes the conversation manager by loading history from memory store if available.
@@ -66,6 +73,8 @@ class ConversationManager(
      * 2. Sends a summarization request to the AI
      * 3. Replaces the conversation history with [system prompt + summary]
      * 4. Then proceeds with the normal request flow
+     * 
+     * If MCP service is available and message history is enabled, tool calling is used.
      */
     suspend fun sendRequest(userContent: String, temperature: Double? = null): ChatResponse {
         // Check if summarization is needed before processing the new request
@@ -97,11 +106,52 @@ class ConversationManager(
             val userContentWithSummary = "Previous conversation summary: $summary\n\n$userContent"
             
             // Proceed with the normal request flow, using the combined message
-            return sendRequestInternal(userContentWithSummary, temperature)
+            return processRequest(userContentWithSummary, temperature)
         }
         
         // Proceed with the normal request flow (when summarization is not needed)
-        return sendRequestInternal(userContent, temperature)
+        return processRequest(userContent, temperature)
+    }
+    
+    /**
+     * Processes a request, using tool calling if available, otherwise normal flow.
+     */
+    private suspend fun processRequest(userContent: String, temperature: Double?): ChatResponse {
+        // #region agent log
+        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
+            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:119","message":"processRequest entry","data":{"hasToolHandler":${toolCallingHandler != null},"useMessageHistory":${config.useMessageHistory},"userContentLength":${userContent.length}},"timestamp":${System.currentTimeMillis()}}\n"""
+        )
+        // #endregion
+        // Use tool calling handler if available and message history is enabled
+        if (toolCallingHandler != null && config.useMessageHistory) {
+            // #region agent log
+            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
+                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:125","message":"Calling processWithTools","data":{},"timestamp":${System.currentTimeMillis()}}\n"""
+            )
+            // #endregion
+            val response = toolCallingHandler.processWithTools(
+                userContent,
+                messageHistory,
+                temperature
+            )
+            // #region agent log
+            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
+                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:133","message":"processWithTools returned","data":{"responseContentLength":${response.content.length},"hasUsage":${response.usage != null}},"timestamp":${System.currentTimeMillis()}}\n"""
+            )
+            // #endregion
+            // Track usage
+            lastResponseUsage = response.usage
+            saveHistoryAsync()
+            return response
+        } else {
+            // #region agent log
+            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
+                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"ConversationManager.kt:142","message":"Using normal flow (no tool calling)","data":{},"timestamp":${System.currentTimeMillis()}}\n"""
+            )
+            // #endregion
+            // Normal flow without tools
+            return sendRequestInternal(userContent, temperature)
+        }
     }
 
     /**

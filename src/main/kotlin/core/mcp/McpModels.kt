@@ -62,6 +62,14 @@ interface McpService {
      * Returns the list of available tools from the MCP server.
      */
     suspend fun getAvailableTools(): McpResult<List<McpToolInfo>>
+    
+    /**
+     * Executes a tool with the given name and arguments.
+     * @param toolName The name of the tool to execute
+     * @param arguments JSON string containing the tool arguments
+     * @return The result of tool execution as a string
+     */
+    suspend fun callTool(toolName: String, arguments: String): McpResult<String>
 }
 
 

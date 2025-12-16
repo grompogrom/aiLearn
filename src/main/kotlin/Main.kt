@@ -46,12 +46,13 @@ fun main() = runBlocking {
                 val frontend = CliFrontend(config, mcpService)
                 val summarizationCallback = frontend.createSummarizationCallback()
 
-                // Create conversation manager with provider, config, summarization callback, and memory store
+                // Create conversation manager with provider, config, summarization callback, memory store, and MCP service
                 val conversationManager = ConversationManager(
                     provider,
                     config,
                     summarizationCallback,
-                    memoryStore
+                    memoryStore,
+                    mcpService
                 )
 
                 // Initialize conversation manager (loads history if available)

@@ -58,6 +58,34 @@ class McpServiceImpl(
             McpResult.Success(emptyList())
         }
     }
+    
+    override suspend fun callTool(toolName: String, arguments: String): McpResult<String> {
+        if (clients.isEmpty()) {
+            return McpResult.Error(
+                McpError.NotConfigured("No MCP servers configured")
+            )
+        }
+        
+        // Try each client until one succeeds
+        val errors = mutableListOf<McpError>()
+        
+        for (client in clients) {
+            when (val result = client.callTool(toolName, arguments)) {
+                is McpResult.Success -> {
+                    return result
+                }
+                is McpResult.Error -> {
+                    errors.add(result.error)
+                }
+            }
+        }
+        
+        // All clients failed
+        return McpResult.Error(
+            errors.firstOrNull() 
+                ?: McpError.ConnectionFailed("All MCP servers failed to execute tool")
+        )
+    }
 }
 
 
