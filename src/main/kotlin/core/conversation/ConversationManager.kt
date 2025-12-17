@@ -68,7 +68,8 @@ class ConversationManager(
      * Sends a request with conversation history (if enabled).
      * 
      * Before processing the new request, this method checks if summarization is needed
-     * based on the previous response's token usage. If the threshold is exceeded:
+     * based on the previous response's token usage. If the threshold is exceeded and
+     * summarization is enabled:
      * 1. Notifies the callback that summarization is starting
      * 2. Sends a summarization request to the AI
      * 3. Replaces the conversation history with [system prompt + summary]
@@ -79,37 +80,62 @@ class ConversationManager(
     suspend fun sendRequest(userContent: String, temperature: Double? = null): ChatResponse {
         // Check if summarization is needed before processing the new request
         // This check uses the previous response's token usage to decide
-        if (config.useMessageHistory && summarizer.shouldSummarize(lastResponseUsage)) {
-            // Notify that summarization is starting
-            summarizationCallback?.invoke(true)
-            
-            // Get the current history (including system prompt) for summarization
-            val currentHistory = messageHistory.toList()
-            
-            // Request summary from the AI using dedicated summarization configuration
-            val summary = summarizer.summarizeConversation(currentHistory)
-            
-            // Replace the conversation history with system prompt only
-            // The summary will be prepended to the new user message to maintain proper message alternation
-            // (SYSTEM -> USER -> ASSISTANT pattern required by the API)
-            messageHistory.clear()
-            messageHistory.add(Message.create(MessageRole.SYSTEM, config.systemPrompt))
-            
-            // Save the new history state (system prompt only, summary will be in next user message)
-            saveHistoryAsync()
-            
-            // Notify that summarization is complete
-            summarizationCallback?.invoke(false)
-            
-            // Prepend summary to the new user message to provide context
-            // This ensures proper message alternation (no consecutive USER messages)
-            val userContentWithSummary = "Previous conversation summary: $summary\n\n$userContent"
-            
-            // Proceed with the normal request flow, using the combined message
-            return processRequest(userContentWithSummary, temperature)
+        if (shouldTriggerSummarization()) {
+            return handleSummarizationAndContinue(userContent, temperature)
         }
         
         // Proceed with the normal request flow (when summarization is not needed)
+        return processRequest(userContent, temperature)
+    }
+    
+    /**
+     * Determines if summarization should be triggered.
+     * Summarization is triggered when:
+     * - Message history is enabled
+     * - Summarization is enabled in config
+     * - Previous response's token usage exceeds threshold
+     */
+    private fun shouldTriggerSummarization(): Boolean {
+        return config.useMessageHistory 
+            && config.enableSummarization 
+            && summarizer.shouldSummarize(lastResponseUsage)
+    }
+    
+    /**
+     * Handles the summarization process and continues with the request.
+     */
+    private suspend fun handleSummarizationAndContinue(
+        userContent: String,
+        temperature: Double?
+    ): ChatResponse {
+        // Notify that summarization is starting
+        summarizationCallback?.invoke(true)
+        
+        // Get the current history (including system prompt) for summarization
+        val currentHistory = messageHistory.toList()
+        
+        // Request summary from the AI using dedicated summarization configuration
+        val summary = summarizer.summarizeConversation(currentHistory)
+        
+        // Replace the conversation history with system prompt enhanced with summary context
+        // This maintains proper message alternation while providing context
+        messageHistory.clear()
+        val enhancedSystemPrompt = buildString {
+            append(config.systemPrompt)
+            if (summary.isNotBlank()) {
+                append("\n\nPrevious conversation summary: ")
+                append(summary)
+            }
+        }
+        messageHistory.add(Message.create(MessageRole.SYSTEM, enhancedSystemPrompt))
+        
+        // Save the new history state
+        saveHistoryAsync()
+        
+        // Notify that summarization is complete
+        summarizationCallback?.invoke(false)
+        
+        // Now process the actual user request with the summary context in the system prompt
         return processRequest(userContent, temperature)
     }
     
@@ -135,60 +161,37 @@ class ConversationManager(
     }
 
     /**
-     * Sends an independent request without using shared message history.
-     * Useful for isolated queries that should not affect conversation context.
-     */
-    suspend fun sendIndependentRequest(userContent: String, temperature: Double? = null): ChatResponse {
-        val messages = listOf(
-            Message.create(MessageRole.SYSTEM, config.systemPrompt),
-            Message.create(MessageRole.USER, userContent)
-        )
-
-        val request = ChatRequest(
-            model = config.model,
-            messages = messages,
-            maxTokens = config.maxTokens,
-            temperature = temperature ?: config.temperature
-        )
-
-        return llmProvider.sendRequest(request)
-    }
-
-    /**
-     * Clears the conversation history.
+     * Clears the conversation history and resets token usage tracking.
+     * If message history is enabled, reinitializes with system prompt.
      */
     suspend fun clearHistory() {
         messageHistory.clear()
         lastResponseUsage = null
+        
         if (config.useMessageHistory) {
             messageHistory.add(Message.create(MessageRole.SYSTEM, config.systemPrompt))
-            // Save the cleared state (with just system prompt)
-            if (memoryStore != null) {
-                try {
-                    memoryStore.clearHistory()
-                    // Save the new state with just system prompt
-                    memoryStore.saveHistory(messageHistory.toList())
-                } catch (e: Exception) {
-                    // Log error but don't crash - persistence is best effort
-                    System.err.println("Warning: Failed to save cleared history: ${e.message}")
-                }
+        }
+        
+        clearMemoryStore()
+    }
+    
+    /**
+     * Clears the memory store, handling errors gracefully.
+     */
+    private suspend fun clearMemoryStore() {
+        if (memoryStore == null) return
+        
+        try {
+            memoryStore.clearHistory()
+            if (config.useMessageHistory) {
+                // Save the new state with just system prompt
+                memoryStore.saveHistory(messageHistory.toList())
             }
-        } else {
-            // If message history is disabled, just clear the memory store
-            if (memoryStore != null) {
-                try {
-                    memoryStore.clearHistory()
-                } catch (e: Exception) {
-                    System.err.println("Warning: Failed to clear history: ${e.message}")
-                }
-            }
+        } catch (e: Exception) {
+            // Log error but don't crash - persistence is best effort
+            System.err.println("Warning: Failed to clear history: ${e.message}")
         }
     }
-
-    /**
-     * Gets the current conversation history.
-     */
-    fun getHistory(): List<Message> = messageHistory.toList()
 
     /**
      * Internal method to send a request with the given user content.

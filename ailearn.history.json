@@ -1,22 +1,6 @@
 [
     {
         "role": "SYSTEM",
-        "content": "Answers must be short and succinct\n\nYou have access to the following tools:\n1. pokeapi_get_pokemon\n   Description: Fetch a summarized view of a Pokémon by name or ID from PokeAPI. Returns id, name, height, weight, types, and sprite URLs.\n   Parameters: ToolSchema(properties=null, required=null)\n2. pokeapi_get_move\n   Description: Fetch basic information about a Pokémon move by name or ID from PokeAPI. Returns id, name, power, PP, accuracy, type, and damage class.\n   Parameters: ToolSchema(properties=null, required=null)\n3. pokeapi_search_pokemon\n   Description: List Pokémon names using the paginated list endpoint from PokeAPI. Supports limit (1-100, default 20) and offset (default 0) parameters.\n   Parameters: ToolSchema(properties=null, required=null)\n\nTo use a tool, respond with a JSON object in this format:\n{\"tool\": \"tool_name\", \"arguments\": {\"param1\": \"value1\", \"param2\": \"value2\"}}\n\nYou can request multiple tools by using an array:\n[{\"tool\": \"tool1\", \"arguments\": {...}}, {\"tool\": \"tool2\", \"arguments\": {...}}]\n\nAfter tool execution, you will receive the results and should provide your final answer.\n"
-    },
-    {
-        "role": "USER",
-        "content": "выведи список покемонов. Используй tool"
-    },
-    {
-        "role": "ASSISTANT",
-        "content": "{\"tool\": \"pokeapi_search_pokemon\", \"arguments\": {\"limit\": 20, \"offset\": 0}}"
-    },
-    {
-        "role": "USER",
-        "content": "Tool execution results:\nTool: pokeapi_search_pokemon\nArguments: {\"limit\":20,\"offset\":0}\nResult: TextContent(text=Found 1350 Pokémon total\nShowing 20 results (offset: 0, limit: 20)\nNext page available\n\nResults:\n1. bulbasaur (https://pokeapi.co/api/v2/pokemon/1/)\n2. ivysaur (https://pokeapi.co/api/v2/pokemon/2/)\n3. venusaur (https://pokeapi.co/api/v2/pokemon/3/)\n4. charmander (https://pokeapi.co/api/v2/pokemon/4/)\n5. charmeleon (https://pokeapi.co/api/v2/pokemon/5/)\n6. charizard (https://pokeapi.co/api/v2/pokemon/6/)\n7. squirtle (https://pokeapi.co/api/v2/pokemon/7/)\n8. wartortle (https://pokeapi.co/api/v2/pokemon/8/)\n9. blastoise (https://pokeapi.co/api/v2/pokemon/9/)\n10. caterpie (https://pokeapi.co/api/v2/pokemon/10/)\n11. metapod (https://pokeapi.co/api/v2/pokemon/11/)\n12. butterfree (https://pokeapi.co/api/v2/pokemon/12/)\n13. weedle (https://pokeapi.co/api/v2/pokemon/13/)\n14. kakuna (https://pokeapi.co/api/v2/pokemon/14/)\n15. beedrill (https://pokeapi.co/api/v2/pokemon/15/)\n16. pidgey (https://pokeapi.co/api/v2/pokemon/16/)\n17. pidgeotto (https://pokeapi.co/api/v2/pokemon/17/)\n18. pidgeot (https://pokeapi.co/api/v2/pokemon/18/)\n19. rattata (https://pokeapi.co/api/v2/pokemon/19/)\n20. raticate (https://pokeapi.co/api/v2/pokemon/20/)\n, annotations=null, meta=null)\n\n\nPlease provide your final answer based on these results."
-    },
-    {
-        "role": "ASSISTANT",
-        "content": "Вот список первых 20 покемонов из PokeAPI (всего найдено 1350):\n\n1. bulbasaur\n2. ivysaur\n3. venusaur\n4. charmander\n5. charmeleon\n6. charizard\n7. squirtle\n8. wartortle\n9. blastoise\n10. caterpie\n11. metapod\n12. butterfree\n13. weedle\n14. kakuna\n15. beedrill\n16. pidgey\n17. pidgeotto\n18. pidgeot\n19. rattata\n20. raticate[1]"
+        "content": "Answers must be short and succinct"
     }
 ]

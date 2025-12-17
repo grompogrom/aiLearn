@@ -67,6 +67,10 @@ private class EnvironmentConfig : AppConfig {
         get() = System.getenv("AILEARN_USE_MESSAGE_HISTORY")?.toBoolean() 
             ?: DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY
     
+    override val enableSummarization: Boolean
+        get() = System.getenv("AILEARN_ENABLE_SUMMARIZATION")?.toBoolean() 
+            ?: DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION
+    
     override val summarizationTokenThreshold: Int
         get() = System.getenv("AILEARN_SUMMARIZATION_TOKEN_THRESHOLD")?.toIntOrNull() 
             ?: DefaultConfig.DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD
@@ -148,6 +152,8 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val requestTimeoutMillis: Long get() = getLong("request.timeout.millis", DefaultConfig.DEFAULT_REQUEST_TIMEOUT_MILLIS)
     override val useMessageHistory: Boolean get() = getBoolean("use.message.history", DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY)
     
+    override val enableSummarization: Boolean get() = getBoolean("enable.summarization", DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION)
+    
     override val summarizationTokenThreshold: Int get() = getInt("summarization.token.threshold", DefaultConfig.DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD)
     override val summarizationModel: String get() = getString("summarization.model", DefaultConfig.DEFAULT_SUMMARIZATION_MODEL)
     override val summarizationMaxTokens: Int get() = getInt("summarization.max.tokens", DefaultConfig.DEFAULT_SUMMARIZATION_MAX_TOKENS)
@@ -207,6 +213,8 @@ private class BuildConfigWrapper : AppConfig {
     override val requestTimeoutMillis: Long = DefaultConfig.DEFAULT_REQUEST_TIMEOUT_MILLIS
     override val useMessageHistory: Boolean = DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY
     
+    override val enableSummarization: Boolean = DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION
+    
     override val summarizationTokenThreshold: Int = DefaultConfig.DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD
     override val summarizationModel: String = DefaultConfig.DEFAULT_SUMMARIZATION_MODEL
     override val summarizationMaxTokens: Int = DefaultConfig.DEFAULT_SUMMARIZATION_MAX_TOKENS
@@ -237,6 +245,8 @@ private class DefaultAppConfig : AppConfig {
     override val pricePerMillionTokens: Double = DefaultConfig.DEFAULT_PRICE_PER_MILLION_TOKENS
     override val requestTimeoutMillis: Long = DefaultConfig.DEFAULT_REQUEST_TIMEOUT_MILLIS
     override val useMessageHistory: Boolean = DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY
+    
+    override val enableSummarization: Boolean = DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION
     
     override val summarizationTokenThreshold: Int = DefaultConfig.DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD
     override val summarizationModel: String = DefaultConfig.DEFAULT_SUMMARIZATION_MODEL
@@ -271,6 +281,8 @@ private class CompositeConfig(
     override val pricePerMillionTokens: Double get() = primary.pricePerMillionTokens
     override val requestTimeoutMillis: Long get() = primary.requestTimeoutMillis
     override val useMessageHistory: Boolean get() = primary.useMessageHistory
+    
+    override val enableSummarization: Boolean get() = primary.enableSummarization
     
     override val summarizationTokenThreshold: Int get() = if (primary.summarizationTokenThreshold > 0) primary.summarizationTokenThreshold else fallback.summarizationTokenThreshold
     override val summarizationModel: String get() = primary.summarizationModel.ifEmpty { fallback.summarizationModel }

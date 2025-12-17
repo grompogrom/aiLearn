@@ -138,6 +138,7 @@ src/main/kotlin/
 - `AILEARN_PRICE_PER_MILLION_TOKENS`: Price per million tokens
 - `AILEARN_REQUEST_TIMEOUT_MILLIS`: Request timeout in milliseconds
 - `AILEARN_USE_MESSAGE_HISTORY`: Whether to use message history (true/false)
+- `AILEARN_ENABLE_SUMMARIZATION`: Whether to enable conversation summarization (true/false, default: true)
 - `AILEARN_SUMMARIZATION_TOKEN_THRESHOLD`: Token threshold for triggering summarization (default: 600)
 - `AILEARN_SUMMARIZATION_MODEL`: Model to use for summarization (default: "sonar")
 - `AILEARN_SUMMARIZATION_MAX_TOKENS`: Max tokens for summarization request (default: 500)
@@ -166,6 +167,7 @@ dialog.end.marker=###END###
 price.per.million.tokens=1.0
 request.timeout.millis=60000
 use.message.history=true
+enable.summarization=true
 summarization.token.threshold=600
 summarization.model=sonar
 summarization.max.tokens=500

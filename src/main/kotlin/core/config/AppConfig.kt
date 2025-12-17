@@ -17,6 +17,7 @@ interface AppConfig {
     val useMessageHistory: Boolean
     
     // Summarization configuration
+    val enableSummarization: Boolean
     val summarizationTokenThreshold: Int
     val summarizationModel: String
     val summarizationMaxTokens: Int
@@ -59,6 +60,7 @@ object DefaultConfig {
     const val DEFAULT_USE_MESSAGE_HISTORY = true
     
     // Summarization defaults
+    const val DEFAULT_ENABLE_SUMMARIZATION = true
     const val DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD = 600
     const val DEFAULT_SUMMARIZATION_MODEL = "sonar"
     const val DEFAULT_SUMMARIZATION_MAX_TOKENS = 500

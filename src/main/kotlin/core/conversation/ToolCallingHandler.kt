@@ -61,18 +61,26 @@ class ToolCallingHandler(
         )
         // #endregion
         
-        // Add system prompt with tool information if tools are available
-        val systemPrompt = if (toolsDescription.isNotEmpty()) {
-            buildSystemPromptWithTools(config.systemPrompt, toolsDescription)
+        // Get the existing system prompt from history if available, otherwise use config
+        val existingSystemPrompt = if (messageHistory.isNotEmpty() && messageHistory.first().role == MessageRole.SYSTEM) {
+            messageHistory.first().content
         } else {
             config.systemPrompt
+        }
+        
+        // Add system prompt with tool information if tools are available
+        // Preserve existing system prompt content (which may include summary context)
+        val systemPrompt = if (toolsDescription.isNotEmpty()) {
+            buildSystemPromptWithTools(existingSystemPrompt, toolsDescription)
+        } else {
+            existingSystemPrompt
         }
         
         // Initialize history if needed
         if (messageHistory.isEmpty() && config.useMessageHistory) {
             messageHistory.add(Message.create(MessageRole.SYSTEM, systemPrompt))
         } else if (messageHistory.isNotEmpty() && messageHistory.first().role == MessageRole.SYSTEM) {
-            // Update system prompt with tools
+            // Update system prompt with tools, preserving existing content
             messageHistory[0] = Message.create(MessageRole.SYSTEM, systemPrompt)
         }
         

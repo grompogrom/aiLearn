@@ -131,23 +131,24 @@ class ConversationManagerSummarizationTest {
         manager.sendRequest("What are coroutines?")
         
         // Verify that the regular request after summarization includes:
-        // 1. System prompt
-        // 2. User message with summary prepended to maintain proper alternation
+        // 1. System prompt with summary context
+        // 2. User message with the actual request
         assertNotNull(capturedRegularRequest)
         val messages = capturedRegularRequest!!.messages
         
-        // Should have: system prompt, user message (with summary prepended)
-        assertTrue(messages.size == 2, "History should contain system prompt and user message with summary")
+        // Should have: system prompt (with summary), user message
+        assertTrue(messages.size == 2, "History should contain system prompt with summary and user message")
         assertTrue(messages[0].role == MessageRole.SYSTEM)
-        assertTrue(messages[0].content == config.systemPrompt)
+        // System prompt should contain both the original prompt and the summary
+        val systemPrompt = messages[0].content
+        assertTrue(systemPrompt.contains(config.systemPrompt), "System prompt should contain original prompt")
+        assertTrue(systemPrompt.contains("Previous conversation summary:"), "System prompt should contain summary label")
+        assertTrue(systemPrompt.contains("Summary: Previous conversation about Kotlin and coroutines."), "System prompt should contain summary content")
         
-        // The user message should contain both the summary and the new question
-        // Summary is prepended to avoid consecutive USER messages (which violates API alternation rule)
+        // The user message should contain only the actual request
         val userMessage = messages[1]
         assertTrue(userMessage.role == MessageRole.USER)
-        assertTrue(userMessage.content.contains("Previous conversation summary:"))
-        assertTrue(userMessage.content.contains("Summary: Previous conversation about Kotlin and coroutines."))
-        assertTrue(userMessage.content.contains("What are coroutines?"))
+        assertTrue(userMessage.content == "What are coroutines?", "User message should contain only the actual request")
     }
 
     @Test
@@ -171,6 +172,38 @@ class ConversationManagerSummarizationTest {
         manager.sendRequest("Question 2")
         
         assertEquals(0, summarizationRequestCount, "Summarization should not be triggered when history is disabled")
+    }
+
+    @Test
+    fun `sendRequest does not trigger summarization when enableSummarization is false`() = runBlocking {
+        var summarizationRequestCount = 0
+        var callbackInvoked = false
+        
+        val config = createTestConfig(threshold = 2000, enableSummarization = false)
+        val provider = createMockProvider { request ->
+            if (request.model == config.summarizationModel) {
+                summarizationRequestCount++
+            }
+            ChatResponse(
+                content = "Response",
+                usage = TokenUsage(totalTokens = 2500) // Exceeds threshold
+            )
+        }
+        
+        val callback: SummarizationCallback = { isStarting ->
+            callbackInvoked = true
+        }
+        
+        val manager = ConversationManager(provider, config, callback)
+        
+        // First request
+        manager.sendRequest("Question 1")
+        
+        // Second request - should NOT trigger summarization even though threshold is exceeded
+        manager.sendRequest("Question 2")
+        
+        assertEquals(0, summarizationRequestCount, "Summarization should not be triggered when disabled")
+        assertFalse(callbackInvoked, "Callback should not be invoked when summarization is disabled")
     }
 
     @Test
@@ -211,7 +244,8 @@ class ConversationManagerSummarizationTest {
     // Helper functions
     private fun createTestConfig(
         threshold: Int = 2000,
-        useMessageHistory: Boolean = true
+        useMessageHistory: Boolean = true,
+        enableSummarization: Boolean = true
     ): AppConfig {
         return object : AppConfig {
             override val apiKey: String = "test-key"
@@ -224,6 +258,7 @@ class ConversationManagerSummarizationTest {
             override val pricePerMillionTokens: Double = 1.0
             override val requestTimeoutMillis: Long = 60000
             override val useMessageHistory: Boolean = useMessageHistory
+            override val enableSummarization: Boolean = enableSummarization
             override val summarizationTokenThreshold: Int = threshold
             override val summarizationModel: String = "summarization-model"
             override val summarizationMaxTokens: Int = 500
