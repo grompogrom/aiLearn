@@ -7,6 +7,7 @@ import core.domain.ChatResponse
 import core.mcp.McpError
 import core.mcp.McpResult
 import core.mcp.McpService
+import core.reminder.ReminderChecker
 import frontend.Frontend
 import frontend.UserInput
 import frontend.UserOutput
@@ -16,12 +17,14 @@ import frontend.UserOutput
  */
 class CliFrontend(
     private val config: AppConfig,
-    private val mcpService: McpService? = null
+    private val mcpService: McpService? = null,
+    private val reminderChecker: ReminderChecker? = null
 ) : Frontend {
 
     private val exitCommands = setOf("exit", "quit")
     private val clearHistoryCommands = setOf("/clear", "/clearhistory", "clear", "clearhistory")
     private val mcpCommands = setOf("/mcp")
+    private val reminderCommands = setOf("/reminder")
     private val tokenCalculator = TokenCostCalculator(config)
 
     override suspend fun start(conversationManager: ConversationManager) {
@@ -42,6 +45,9 @@ class CliFrontend(
                 }
                 userInput.content.lowercase() in mcpCommands -> {
                     handleMcpCommand()
+                }
+                userInput.content.lowercase() in reminderCommands -> {
+                    handleReminderCommand()
                 }
                 else -> {
                     val shouldContinue = handleUserRequest(conversationManager, userInput.content)
@@ -83,12 +89,13 @@ class CliFrontend(
      * Output is clearly distinguished from regular conversation with a prefix.
      */
     fun printReminderCheck(content: String) {
-        println("\n[Reminder Check] ${content}\n")
+        println("\n[Reminder Check] \n${content}\n")
     }
 
     private fun printWelcomeMessage() {
         println("\nВведите 'exit' или 'quit' для выхода в любой момент")
         println("Введите '/clear' или '/clearhistory' для очистки истории диалога")
+        println("Введите '/reminder' для включения/выключения проверки напоминаний (по умолчанию выключена)")
         println("temp is ${config.temperature}")
     }
 
@@ -174,6 +181,25 @@ class CliFrontend(
                 }
                 println("Вы можете проверить настройки MCP сервера и попробовать снова.")
             }
+        }
+    }
+    
+    private fun handleReminderCommand() {
+        val checker = reminderChecker
+        if (checker == null) {
+            println("\nПроверка напоминаний недоступна. MCP сервис не настроен.")
+            return
+        }
+        
+        val wasRunning = checker.isRunning()
+        val nowRunning = checker.toggle()
+        
+        if (nowRunning && !wasRunning) {
+            println("\n✓ Проверка напоминаний включена. Проверка будет выполняться каждую минуту.")
+        } else if (!nowRunning && wasRunning) {
+            println("\n✓ Проверка напоминаний выключена.")
+        } else {
+            println("\nПроверка напоминаний уже ${if (nowRunning) "включена" else "выключена"}.")
         }
     }
 

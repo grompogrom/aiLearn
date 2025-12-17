@@ -10,7 +10,6 @@ import api.mcp.McpSseClient
 import api.mcp.McpServiceImpl
 import core.mcp.McpService
 import frontend.cli.CliFrontend
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -44,9 +43,10 @@ fun main() = runBlocking {
         ProviderFactory.createFromConfig(config).use { provider ->
             // Create memory store for conversation persistence
             MemoryStoreFactory.create(config).use { memoryStore ->
-                // Create frontend first to get summarization callback
-                val frontend = CliFrontend(config, mcpService)
-                val summarizationCallback = frontend.createSummarizationCallback()
+                // Create temporary frontend to get callbacks
+                val tempFrontend = CliFrontend(config, mcpService, null)
+                val summarizationCallback = tempFrontend.createSummarizationCallback()
+                val reminderCheckCallback = tempFrontend.createReminderCheckCallback()
 
                 // Create conversation manager with provider, config, summarization callback, memory store, and MCP service
                 val conversationManager = ConversationManager(
@@ -60,18 +60,15 @@ fun main() = runBlocking {
                 // Initialize conversation manager (loads history if available)
                 conversationManager.initialize()
 
-                // Create reminder check callback
-                val reminderCheckCallback = frontend.createReminderCheckCallback()
-                
-                // Create and start reminder checker in background
+                // Create reminder checker (disabled by default, starts only with /reminder command)
                 val reminderChecker = ReminderChecker(
                     conversationManager,
                     mcpService,
                     reminderCheckCallback
                 )
-                launch {
-                    reminderChecker.start()
-                }
+                
+                // Create final frontend with reminder checker reference
+                val frontend = CliFrontend(config, mcpService, reminderChecker)
 
                 // Start frontend with conversation manager
                 frontend.start(conversationManager)

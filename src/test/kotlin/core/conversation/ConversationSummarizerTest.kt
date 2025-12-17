@@ -194,6 +194,7 @@ class ConversationSummarizerTest {
             override val pricePerMillionTokens: Double = 1.0
             override val requestTimeoutMillis: Long = 60000
             override val useMessageHistory: Boolean = true
+            override val enableSummarization: Boolean = true
             override val summarizationTokenThreshold: Int = threshold
             override val summarizationModel: String = summarizationModel
             override val summarizationMaxTokens: Int = summarizationMaxTokens

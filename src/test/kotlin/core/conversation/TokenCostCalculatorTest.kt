@@ -197,6 +197,7 @@ class TokenCostCalculatorTest {
             override val pricePerMillionTokens: Double = pricePerMillion
             override val requestTimeoutMillis: Long = 60000
             override val useMessageHistory: Boolean = true
+            override val enableSummarization: Boolean = true
             override val summarizationTokenThreshold: Int = 2000
             override val summarizationModel: String = "test-model"
             override val summarizationMaxTokens: Int = 500

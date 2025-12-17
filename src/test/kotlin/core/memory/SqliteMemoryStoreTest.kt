@@ -28,6 +28,7 @@ class SqliteMemoryStoreTest {
         override val pricePerMillionTokens: Double = 1.0
         override val requestTimeoutMillis: Long = 5000
         override val useMessageHistory: Boolean = true
+        override val enableSummarization: Boolean = true
         override val summarizationTokenThreshold: Int = 1000
         override val summarizationModel: String = "test-model"
         override val summarizationMaxTokens: Int = 500

@@ -28,7 +28,12 @@ class ReminderChecker(
     private val outputCallback: ReminderCheckCallback? = null
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
-    private var isRunning = false
+    @Volatile private var isRunning = false
+    
+    /**
+     * Checks if the reminder checker is currently running.
+     */
+    fun isRunning(): Boolean = isRunning
     
     /**
      * Starts the periodic reminder checking.
@@ -41,7 +46,7 @@ class ReminderChecker(
         isRunning = true
         
         scope.launch {
-            while (coroutineContext.isActive && isRunning) {
+            while (isActive && isRunning) {
                 try {
                     checkReminders()
                 } catch (e: Exception) {
@@ -60,6 +65,19 @@ class ReminderChecker(
      */
     fun stop() {
         isRunning = false
+    }
+    
+    /**
+     * Toggles the reminder checker on/off.
+     * @return true if reminder checker is now running, false otherwise
+     */
+    fun toggle(): Boolean {
+        if (isRunning) {
+            stop()
+        } else {
+            start()
+        }
+        return isRunning
     }
     
     /**
@@ -83,7 +101,7 @@ class ReminderChecker(
                 
                 // Build prompt for LLM
                 val prompt = buildString {
-                    append("опиши события из вызова reminder.list\n\n")
+                    append("опиши события описанные здесь. Сделай это в стиле гопника. БЕЗ МАТА\n\n")
                     append(reminderData)
                 }
                 
