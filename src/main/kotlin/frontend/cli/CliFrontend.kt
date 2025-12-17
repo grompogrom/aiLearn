@@ -68,6 +68,23 @@ class CliFrontend(
             }
         }
     }
+    
+    /**
+     * Creates a reminder check callback that prints reminder check results.
+     */
+    fun createReminderCheckCallback(): (String) -> Unit {
+        return { content ->
+            printReminderCheck(content)
+        }
+    }
+    
+    /**
+     * Formats and prints reminder check results.
+     * Output is clearly distinguished from regular conversation with a prefix.
+     */
+    fun printReminderCheck(content: String) {
+        println("\n[Reminder Check] ${content}\n")
+    }
 
     private fun printWelcomeMessage() {
         println("\nВведите 'exit' или 'quit' для выхода в любой момент")

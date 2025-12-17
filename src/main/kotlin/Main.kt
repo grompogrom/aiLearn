@@ -1,6 +1,7 @@
 import core.config.ConfigLoader
 import core.conversation.ConversationManager
 import core.memory.MemoryStoreFactory
+import core.reminder.ReminderChecker
 import core.utils.use
 import api.provider.ProviderFactory
 import api.mcp.McpClientsManager
@@ -9,6 +10,7 @@ import api.mcp.McpSseClient
 import api.mcp.McpServiceImpl
 import core.mcp.McpService
 import frontend.cli.CliFrontend
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -57,6 +59,19 @@ fun main() = runBlocking {
 
                 // Initialize conversation manager (loads history if available)
                 conversationManager.initialize()
+
+                // Create reminder check callback
+                val reminderCheckCallback = frontend.createReminderCheckCallback()
+                
+                // Create and start reminder checker in background
+                val reminderChecker = ReminderChecker(
+                    conversationManager,
+                    mcpService,
+                    reminderCheckCallback
+                )
+                launch {
+                    reminderChecker.start()
+                }
 
                 // Start frontend with conversation manager
                 frontend.start(conversationManager)

@@ -253,4 +253,29 @@ class ConversationManager(
             temperature = temperature
         )
     }
+    
+    /**
+     * Sends a request without saving to conversation history.
+     * This is useful for background tasks like reminder checks that should not
+     * pollute the conversation history.
+     * 
+     * @param userContent The user message content
+     * @param temperature Optional temperature override (defaults to config temperature)
+     * @return ChatResponse with content and token usage
+     */
+    suspend fun sendRequestWithoutHistory(userContent: String, temperature: Double? = null): ChatResponse {
+        val messages = listOf(
+            Message.create(MessageRole.SYSTEM, config.systemPrompt),
+            Message.create(MessageRole.USER, userContent)
+        )
+        
+        val request = ChatRequest(
+            model = config.model,
+            messages = messages,
+            maxTokens = config.maxTokens,
+            temperature = temperature ?: config.temperature
+        )
+        
+        return llmProvider.sendRequest(request)
+    }
 }
