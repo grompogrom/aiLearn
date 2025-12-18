@@ -1,6 +1,21 @@
 package api.mcp
 
 /**
+ * Transport type for MCP server connection.
+ */
+enum class McpTransportType {
+    /**
+     * Server-Sent Events (SSE) transport.
+     */
+    SSE,
+    
+    /**
+     * Streamable HTTP transport.
+     */
+    STREAMABLE_HTTP
+}
+
+/**
  * Configuration for a single MCP server.
  */
 data class McpServerConfig(
@@ -24,9 +39,15 @@ data class McpServerConfig(
     /**
      * Full base URL for the MCP server (e.g., "https://mcp.api.coingecko.com/mcp").
      * If provided, this takes precedence over [host] and [port].
-     * The SDK will automatically append "/sse" to this URL.
+     * For SSE transport, the SDK will automatically append "/sse" to this URL.
      */
     val baseUrl: String? = null,
+    
+    /**
+     * Transport type to use for connecting to the MCP server.
+     * Defaults to SSE for backward compatibility.
+     */
+    val transportType: McpTransportType = McpTransportType.SSE,
     
     /**
      * Request timeout in milliseconds.
@@ -42,6 +63,16 @@ data class McpServerConfig(
     fun getSseUrl(): String {
         return baseUrl ?: "$host:$port"
     }
+    
+    /**
+     * Constructs the base URL for the connection.
+     * If [baseUrl] is provided, it's used directly.
+     * Otherwise, constructs URL from [host] and [port].
+     * This method is transport-agnostic and can be used for both SSE and StreamableHttp.
+     */
+    fun getConnectionUrl(): String {
+        return baseUrl ?: "$host:$port"
+    }
 }
 
 /**
@@ -51,14 +82,17 @@ data class McpServerConfig(
  * should connect to. Servers are defined in code here.
  */
 object McpConfig {
-    /**
-     * List of configured MCP servers.
-     * Add or modify server configurations here.
-     */
     val servers: List<McpServerConfig> = listOf(
         McpServerConfig(
             id = "default",
             baseUrl = "http://127.0.0.1:3002/sse",
+            transportType = McpTransportType.SSE,
+            requestTimeoutMillis = 15_000L
+        ),
+        McpServerConfig(
+            id = "streamable-http-server",
+            baseUrl = "http://127.0.0.1:8000/mcp",
+            transportType = McpTransportType.STREAMABLE_HTTP,
             requestTimeoutMillis = 15_000L
         )
     )

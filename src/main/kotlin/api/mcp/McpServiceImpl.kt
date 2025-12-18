@@ -9,7 +9,7 @@ import core.mcp.McpToolInfo
  * Helper class to manage multiple MCP clients as a single AutoCloseable resource.
  */
 class McpClientsManager(
-    private val clients: List<McpSseClient>
+    private val clients: List<McpClient>
 ) : AutoCloseable {
     override fun close() {
         clients.forEach { it.close() }
@@ -21,9 +21,10 @@ class McpClientsManager(
  *
  * Aggregates tools from all configured MCP servers. If any server fails, it continues
  * collecting tools from other servers and reports errors separately.
+ * Supports mixed transport types (SSE and StreamableHttp) in a single session.
  */
 class McpServiceImpl(
-    private val clients: List<McpSseClient>
+    private val clients: List<McpClient>
 ) : McpService {
 
     override suspend fun getAvailableTools(): McpResult<List<McpToolInfo>> {
@@ -66,10 +67,36 @@ class McpServiceImpl(
             )
         }
         
-        // Try each client until one succeeds
-        val errors = mutableListOf<McpError>()
+        // First, find the client(s) that have this tool
+        val clientsWithTool = mutableListOf<McpClient>()
         
         for (client in clients) {
+            when (val toolsResult = client.listTools()) {
+                is McpResult.Success -> {
+                    // Check if this client has the requested tool
+                    if (toolsResult.value.any { it.name == toolName }) {
+                        clientsWithTool.add(client)
+                    }
+                }
+                is McpResult.Error -> {
+                    // If we can't list tools, we'll skip this client
+                    // It might be a connection issue, but we'll try others
+                }
+            }
+        }
+        
+        // If no client has this tool, return error
+        if (clientsWithTool.isEmpty()) {
+            return McpResult.Error(
+                McpError.ServerError("Tool '$toolName' not found in any MCP server")
+            )
+        }
+        
+        // Try calling the tool in clients that have it
+        // If tool exists in multiple servers, try them in order
+        val errors = mutableListOf<McpError>()
+        
+        for (client in clientsWithTool) {
             when (val result = client.callTool(toolName, arguments)) {
                 is McpResult.Success -> {
                     return result
@@ -80,10 +107,10 @@ class McpServiceImpl(
             }
         }
         
-        // All clients failed
+        // All clients with the tool failed
         return McpResult.Error(
             errors.firstOrNull() 
-                ?: McpError.ConnectionFailed("All MCP servers failed to execute tool")
+                ?: McpError.ConnectionFailed("All MCP servers with tool '$toolName' failed to execute it")
         )
     }
 }

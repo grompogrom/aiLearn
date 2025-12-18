@@ -51,9 +51,11 @@ src/main/kotlin/
 │   ├── provider/                     # Provider factory
 │   ├── perplexity/                  # Perplexity API implementation
 │   └── mcp/                         # MCP server integration
-│       ├── McpConfig.kt
-│       ├── McpSseClient.kt
-│       ├── McpServiceImpl.kt
+│       ├── McpConfig.kt             # MCP server configuration and transport types
+│       ├── McpClient.kt             # Common interface for MCP clients
+│       ├── McpSseClient.kt          # SSE client for MCP servers
+│       ├── McpStreamableHttpClient.kt # StreamableHttp client for MCP servers
+│       ├── McpServiceImpl.kt        # MCP service implementation
 │       └── McpSseModels.kt
 └── frontend/                        # Frontend implementations
     └── cli/                         # CLI frontend
@@ -225,8 +227,8 @@ src/main/kotlin/
 - `io.ktor:ktor-client-cio:3.3.2`
 - `io.ktor:ktor-client-content-negotiation:3.3.2`
 - `io.ktor:ktor-serialization-kotlinx-json:3.3.2`
-- `io.ktor:ktor-client-sse:3.3.2` - SSE support for MCP
-- `io.modelcontextprotocol:kotlin-sdk-client:0.8.1` - MCP SDK
+- `io.ktor:ktor-client-sse:3.3.2` - SSE support for MCP (required for both SSE and StreamableHttp transports)
+- `io.modelcontextprotocol:kotlin-sdk-client:0.8.1` - MCP SDK (supports both SSE and StreamableHttp transports)
 - `org.slf4j:slf4j-simple:2.0.13`
 
 ### Build
@@ -247,9 +249,11 @@ src/main/kotlin/
 11. ✅ **MCP (Model Context Protocol) integration**
 12. ✅ **Automatic tool calling with iterative execution loop**
 13. ✅ **Tool request parsing from LLM responses**
-14. ✅ **Multiple MCP server support**
-15. ✅ **Persistent conversation history (JSON/SQLite)**
-16. ✅ **Automatic conversation summarization**
+14. ✅ **Multiple MCP server support with mixed transport types**
+15. ✅ **SSE and StreamableHttp transport support**
+16. ✅ **Smart tool routing (tools called in correct server)**
+17. ✅ **Persistent conversation history (JSON/SQLite)**
+18. ✅ **Automatic conversation summarization**
 
 ## Design Decisions
 
@@ -299,17 +303,34 @@ The parser supports multiple formats:
 
 ### Configuration
 
-MCP servers are configured in `api/mcp/McpConfig.kt`:
+MCP servers are configured in `api/mcp/McpConfig.kt`. You can configure multiple servers with different transport types:
 
 ```kotlin
 val servers: List<McpServerConfig> = listOf(
     McpServerConfig(
-        id = "default",
+        id = "sse-server",
         baseUrl = "http://127.0.0.1:3002/sse",
+        transportType = McpTransportType.SSE,
+        requestTimeoutMillis = 15_000L
+    ),
+    McpServerConfig(
+        id = "http-server",
+        baseUrl = "http://127.0.0.1:8000/mcp",
+        transportType = McpTransportType.STREAMABLE_HTTP,
         requestTimeoutMillis = 15_000L
     )
 )
 ```
+
+**Transport Types**:
+- `SSE`: Server-Sent Events transport (default, for backward compatibility)
+- `STREAMABLE_HTTP`: Streamable HTTP transport
+
+**Key Features**:
+- Multiple servers can run simultaneously with different transport types
+- Tools from all servers are automatically aggregated
+- Tool calls are routed to the server that has the requested tool
+- If a tool exists in multiple servers, they are tried in order until one succeeds
 
 ## Potential Improvements & Extension Points
 

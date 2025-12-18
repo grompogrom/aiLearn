@@ -51,8 +51,10 @@ src/main/kotlin/
 │   │   ├── PerplexityAdapter.kt     # Adapter between domain and API models
 │   │   └── PerplexityProvider.kt    # Perplexity implementation
 │   └── mcp/                         # MCP server integration
-│       ├── McpConfig.kt             # MCP server configuration
+│       ├── McpConfig.kt             # MCP server configuration and transport types
+│       ├── McpClient.kt             # Common interface for MCP clients
 │       ├── McpSseClient.kt          # SSE client for MCP servers
+│       ├── McpStreamableHttpClient.kt # StreamableHttp client for MCP servers
 │       ├── McpServiceImpl.kt        # MCP service implementation
 │       ├── McpSseModels.kt          # MCP SSE protocol models
 │       └── McpSseResponseParser.kt  # Parser for MCP responses
@@ -92,17 +94,23 @@ src/main/kotlin/
 - **ProviderFactory**: Creates provider instances based on configuration
 - **PerplexityProvider**: Perplexity AI API implementation
 - **Adapters**: Convert between domain models and API-specific models
-- **McpServiceImpl**: Coordinates access to multiple MCP servers
+- **McpServiceImpl**: Coordinates access to multiple MCP servers, routes tool calls to correct servers
+- **McpClient**: Common interface for all MCP client implementations
 - **McpSseClient**: SSE-based client for communicating with MCP servers
-- **McpConfig**: Configuration for MCP servers (host, port, baseUrl, timeout)
+- **McpStreamableHttpClient**: StreamableHttp-based client for communicating with MCP servers
+- **McpConfig**: Configuration for MCP servers (host, port, baseUrl, transportType, timeout)
+- **McpTransportType**: Enum for transport types (SSE, STREAMABLE_HTTP)
 - **McpSseResponseParser**: Parses MCP server responses
 
 **Key Design Decisions**:
 - Each provider has its own models (allowing for API-specific differences)
 - Adapters handle conversion between domain and API models
 - Providers implement `LlmProvider` interface and `AutoCloseable` for resource management
-- MCP integration uses SSE (Server-Sent Events) for real-time communication
+- MCP integration supports multiple transport types (SSE and StreamableHttp)
+- MCP clients implement common `McpClient` interface for interchangeability
+- MCP service routes tool calls to servers that actually have the requested tool
 - MCP clients support connection reuse for efficiency
+- Multiple MCP servers with different transport types can run simultaneously in one session
 - Easy to add new providers (OpenAI, Google, etc.) without changing core logic
 
 ### Frontend Layer
@@ -153,7 +161,13 @@ MCP servers are configured in code via `McpConfig.kt`. Each server can be config
 - `id`: Unique identifier for the server
 - `host` and `port`: Server address (alternative to baseUrl)
 - `baseUrl`: Full base URL for the server (takes precedence over host/port)
+- `transportType`: Transport type (SSE or STREAMABLE_HTTP, default: SSE)
 - `requestTimeoutMillis`: Request timeout in milliseconds (default: 15000)
+
+**Transport Types**:
+- **SSE (Server-Sent Events)**: Traditional MCP transport using Server-Sent Events
+- **STREAMABLE_HTTP**: Alternative transport using StreamableHttpClientTransport
+- Both transport types can be used simultaneously in the same session
 
 **Config File Format** (`ailearn.config.properties`):
 ```properties
@@ -318,31 +332,78 @@ The application integrates with **MCP (Model Context Protocol)** servers to enab
   - `getAvailableTools()`: Retrieves list of available tools
   - `callTool(toolName, arguments)`: Executes a tool with given arguments
 
+#### McpClient
+- Common interface for all MCP client implementations
+- Defines standard methods: `listTools()` and `callTool()`
+- Allows different transport types to be used interchangeably
+
 #### McpSseClient
 - SSE-based client for MCP servers
+- Implements `McpClient` interface
+- Maintains persistent connections for efficiency
+- Handles connection lifecycle and error recovery
+
+#### McpStreamableHttpClient
+- StreamableHttp-based client for MCP servers
+- Implements `McpClient` interface
+- Uses StreamableHttpClientTransport from MCP SDK
 - Maintains persistent connections for efficiency
 - Handles connection lifecycle and error recovery
 
 ### Configuration
 
-MCP servers are configured in `api/mcp/McpConfig.kt`:
+MCP servers are configured in `api/mcp/McpConfig.kt`. Each server can use either SSE or StreamableHttp transport:
 
 ```kotlin
+enum class McpTransportType {
+    SSE,              // Server-Sent Events transport
+    STREAMABLE_HTTP   // Streamable HTTP transport
+}
+
 val servers: List<McpServerConfig> = listOf(
     McpServerConfig(
-        id = "default",
+        id = "sse-server",
         baseUrl = "http://127.0.0.1:3002/sse",
+        transportType = McpTransportType.SSE,
+        requestTimeoutMillis = 15_000L
+    ),
+    McpServerConfig(
+        id = "http-server",
+        baseUrl = "http://127.0.0.1:8000/mcp",
+        transportType = McpTransportType.STREAMABLE_HTTP,
         requestTimeoutMillis = 15_000L
     )
 )
 ```
 
+**Configuration Options**:
+- `id`: Unique identifier for the server
+- `host` and `port`: Server address (alternative to baseUrl)
+- `baseUrl`: Full base URL for the server (takes precedence over host/port)
+- `transportType`: Transport type to use (SSE or STREAMABLE_HTTP, default: SSE)
+- `requestTimeoutMillis`: Request timeout in milliseconds (default: 15000)
+
+**Mixed Transport Support**:
+- Multiple servers with different transport types can be configured simultaneously
+- Tools from all servers are aggregated regardless of transport type
+- Tool calls are automatically routed to the server that has the requested tool
+
 ### Tool Calling Behavior
 
 - **Automatic**: Tool calling is automatically enabled when MCP service is available and message history is enabled
 - **Iterative**: The system continues the loop until LLM provides a final answer (no tool requests)
+- **Smart Routing**: Tools are automatically called in the server that has them (not just the first server)
+- **Multi-Server Support**: Tools from multiple MCP servers (with different transport types) are aggregated
 - **Error Handling**: Tool execution errors are formatted and sent back to LLM for handling
 - **Transparent**: Users see the final answer, not intermediate tool requests
+
+### Tool Routing Logic
+
+When a tool is requested:
+1. System checks all configured MCP servers to find which ones have the requested tool
+2. Tool is called only in servers that have it
+3. If tool exists in multiple servers, they are tried in order until one succeeds
+4. If tool doesn't exist in any server, a clear error message is returned
 
 ## Testing Strategy
 

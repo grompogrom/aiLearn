@@ -4,10 +4,13 @@ import core.memory.MemoryStoreFactory
 import core.reminder.ReminderChecker
 import core.utils.use
 import api.provider.ProviderFactory
+import api.mcp.McpClient
 import api.mcp.McpClientsManager
 import api.mcp.McpConfig
 import api.mcp.McpSseClient
 import api.mcp.McpServiceImpl
+import api.mcp.McpStreamableHttpClient
+import api.mcp.McpTransportType
 import core.mcp.McpService
 import frontend.cli.CliFrontend
 import kotlinx.coroutines.runBlocking
@@ -31,8 +34,12 @@ fun main() = runBlocking {
     }
     
     // Create MCP clients for all configured servers
-    val mcpClients = McpConfig.servers.map { serverConfig ->
-        McpSseClient(serverConfig)
+    // Support mixed transport types (SSE and StreamableHttp) in a single session
+    val mcpClients: List<McpClient> = McpConfig.servers.map { serverConfig ->
+        when (serverConfig.transportType) {
+            McpTransportType.SSE -> McpSseClient(serverConfig)
+            McpTransportType.STREAMABLE_HTTP -> McpStreamableHttpClient(serverConfig)
+        }
     }
     
     // Use all MCP clients and create service

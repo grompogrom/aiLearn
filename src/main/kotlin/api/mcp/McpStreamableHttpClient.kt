@@ -10,7 +10,6 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.sse.*
 import io.ktor.serialization.kotlinx.json.*
 import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.coroutines.TimeoutCancellationException
@@ -18,14 +17,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 
 /**
- * Infrastructure client for communicating with an MCP server over HTTP SSE.
+ * Infrastructure client for communicating with an MCP server over Streamable HTTP.
  *
  * Responsibilities:
- * - Establish SSE connection using server configuration
- * - Read events and delegate parsing to [McpSseResponseParser]
+ * - Establish StreamableHttp connection using server configuration
  * - Surface results as domain-level [McpResult] without throwing unchecked exceptions
  */
-class McpSseClient(
+class McpStreamableHttpClient(
     private val serverConfig: McpServerConfig
 ) : McpClient {
 
@@ -40,17 +38,11 @@ class McpSseClient(
     }
     
     // Store transport and client for reuse
-    private var transport: SseClientTransport? = null
+    private var transport: StreamableHttpClientTransport? = null
     private var mcpClient: Client? = null
 
     /**
-     * Opens an SSE stream to the MCP server and waits for a tools-list response.
-     *
-     * The concrete wire protocol is intentionally minimal here:
-     * - We connect to the configured SSE endpoint.
-     * - We listen for the first event that can be parsed as a tools-list response.
-     * - Any protocol-specific triggering of "tools/list" on the server side is
-     *   expected to be handled by the MCP server configuration.
+     * Opens a StreamableHttp connection to the MCP server and waits for a tools-list response.
      */
     override suspend fun listTools(): McpResult<List<McpToolInfo>> {
         return try {
@@ -172,9 +164,9 @@ class McpSseClient(
     
     private suspend fun ensureConnection() {
         if (transport == null || mcpClient == null) {
-            transport = SseClientTransport(
+            transport = StreamableHttpClientTransport(
                 client = client,
-                urlString = serverConfig.getSseUrl(),
+                url = serverConfig.getConnectionUrl(),
             )
             
             mcpClient = Client(
@@ -194,5 +186,4 @@ class McpSseClient(
         client.close()
     }
 }
-
 

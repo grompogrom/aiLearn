@@ -50,8 +50,8 @@ interface AppConfig {
  */
 object DefaultConfig {
     const val DEFAULT_API_URL = "https://api.perplexity.ai/chat/completions"
-    const val DEFAULT_MODEL = "sonar"
-    const val DEFAULT_MAX_TOKENS = 1000
+    const val DEFAULT_MODEL = "sonar-pro"
+    const val DEFAULT_MAX_TOKENS = 5000
     const val DEFAULT_TEMPERATURE = 0.6
     const val DEFAULT_SYSTEM_PROMPT = "Answers must be short and succinct"
     const val DEFAULT_DIALOG_END_MARKER = "###END###"
@@ -61,7 +61,7 @@ object DefaultConfig {
     
     // Summarization defaults
     const val DEFAULT_ENABLE_SUMMARIZATION = true
-    const val DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD = 2000
+    const val DEFAULT_SUMMARIZATION_TOKEN_THRESHOLD = 4000
     const val DEFAULT_SUMMARIZATION_MODEL = "sonar"
     const val DEFAULT_SUMMARIZATION_MAX_TOKENS = 500
     const val DEFAULT_SUMMARIZATION_TEMPERATURE = 0.3
