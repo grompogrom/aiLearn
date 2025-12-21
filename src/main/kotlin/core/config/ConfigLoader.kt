@@ -1,6 +1,9 @@
 package core.config
 
+import org.slf4j.LoggerFactory
 import java.io.File
+
+private val logger = LoggerFactory.getLogger(ConfigLoader::class.java)
 
 /**
  * Loads configuration from multiple sources with priority:
@@ -14,18 +17,36 @@ class ConfigLoader {
         private const val CONFIG_FILE_NAME = "ailearn.config.properties"
         
         fun load(): AppConfig {
+            logger.debug("Loading configuration from multiple sources")
+            
             val envConfig = EnvironmentConfig()
+            logger.debug("Environment config loaded")
+            
             val fileConfig = FileConfig.tryLoad(CONFIG_FILE_NAME)
+            if (fileConfig != null) {
+                logger.info("Configuration file loaded: $CONFIG_FILE_NAME")
+            } else {
+                logger.debug("Configuration file not found: $CONFIG_FILE_NAME")
+            }
+            
             val buildConfig = BuildConfigWrapper.tryLoad()
+            if (buildConfig != null) {
+                logger.debug("BuildConfig loaded (API key available)")
+            } else {
+                logger.debug("BuildConfig not available")
+            }
             
             // Chain: env -> file -> buildConfig -> defaults
             val fileOrBuild = fileConfig ?: buildConfig
             val finalFallback = fileOrBuild ?: DefaultAppConfig()
             
-            return CompositeConfig(
+            val config = CompositeConfig(
                 primary = envConfig,
                 fallback = finalFallback
             )
+            
+            logger.info("Configuration loaded successfully (API key: ${if (config.apiKey.isNotBlank()) "configured" else "missing"})")
+            return config
         }
     }
 }
@@ -123,13 +144,18 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     companion object {
         fun tryLoad(fileName: String): FileConfig? {
             val file = File(fileName)
-            if (!file.exists()) return null
+            if (!file.exists()) {
+                logger.debug("Config file does not exist: $fileName")
+                return null
+            }
             
             return try {
                 val properties = java.util.Properties()
                 file.inputStream().use { properties.load(it) }
+                logger.debug("Successfully loaded config file: $fileName")
                 FileConfig(properties)
             } catch (e: Exception) {
+                logger.warn("Failed to load config file: $fileName", e)
                 null
             }
         }
@@ -185,12 +211,17 @@ private class BuildConfigWrapper : AppConfig {
                 val apiKey = apiKeyField.get(null) as? String ?: ""
                 
                 if (apiKey.isNotEmpty()) {
+                    logger.debug("BuildConfig API key loaded successfully")
                     BuildConfigWrapper(apiKey)
                 } else {
+                    logger.debug("BuildConfig API key is empty")
                     null
                 }
+            } catch (e: ClassNotFoundException) {
+                logger.debug("BuildConfig class not found")
+                null
             } catch (e: Exception) {
-                // BuildConfig not available or API_KEY not set
+                logger.debug("Failed to load BuildConfig: ${e.message}")
                 null
             }
         }

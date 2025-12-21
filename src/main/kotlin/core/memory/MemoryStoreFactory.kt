@@ -1,6 +1,9 @@
 package core.memory
 
 import core.config.AppConfig
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger(MemoryStoreFactory::class.java)
 
 /**
  * Factory for creating MemoryStore instances based on configuration.
@@ -13,13 +16,23 @@ object MemoryStoreFactory {
      * @throws IllegalArgumentException if memoryStoreType is not supported
      */
     fun create(config: AppConfig): MemoryStore {
+        logger.debug("Creating memory store (type: ${config.memoryStoreType})")
         return when (config.memoryStoreType.lowercase()) {
-            "json" -> JsonMemoryStore(config)
-            "sqlite" -> SqliteMemoryStore(config)
-            else -> throw IllegalArgumentException(
-                "Unsupported memory store type: ${config.memoryStoreType}. " +
-                "Supported types: json, sqlite"
-            )
+            "json" -> {
+                logger.info("Creating JSON memory store")
+                JsonMemoryStore(config)
+            }
+            "sqlite" -> {
+                logger.info("Creating SQLite memory store")
+                SqliteMemoryStore(config)
+            }
+            else -> {
+                logger.error("Unsupported memory store type: ${config.memoryStoreType}")
+                throw IllegalArgumentException(
+                    "Unsupported memory store type: ${config.memoryStoreType}. " +
+                    "Supported types: json, sqlite"
+                )
+            }
         }
     }
 }

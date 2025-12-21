@@ -9,6 +9,9 @@ import core.mcp.McpResult
 import core.mcp.McpService
 import core.mcp.McpToolInfo
 import core.provider.LlmProvider
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger(ToolCallingHandler::class.java)
 
 /**
  * Handles the tool calling loop for LLM interactions.
@@ -42,24 +45,11 @@ class ToolCallingHandler(
         messageHistory: MutableList<Message>,
         temperature: Double? = null
     ): ChatResponse {
-            // #region agent log
-            try {
-                java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                    """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B,D","location":"ToolCallingHandler.kt:40","message":"processWithTools entry","data":{"userContentLength":${userContent.length},"historySize":${messageHistory.size}},"timestamp":${System.currentTimeMillis()}}\n"""
-                )
-            } catch (e: Exception) {
-                // Logging failed, but continue execution
-            }
-            // #endregion
+        logger.debug("Processing request with tools (userContent length: ${userContent.length}, history size: ${messageHistory.size})")
         
         // Get available tools and create tool description for LLM
         val toolsDescription = getToolsDescription()
-        
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ToolCallingHandler.kt:48","message":"Got tools description","data":{"toolsCount":${toolsDescription.size}},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
+        logger.info("Available tools: ${toolsDescription.size}")
         
         // Get the existing system prompt from history if available, otherwise use config
         val existingSystemPrompt = if (messageHistory.isNotEmpty() && messageHistory.first().role == MessageRole.SYSTEM) {
@@ -92,12 +82,7 @@ class ToolCallingHandler(
         
         while (iteration < maxIterations) {
             iteration++
-            
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"B,D","location":"ToolCallingHandler.kt:72","message":"Loop iteration start","data":{"iteration":$iteration,"historySize":${messageHistory.size}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
+            logger.debug("Tool calling iteration $iteration/$maxIterations (history size: ${messageHistory.size})")
             
             // Create and send request
             val request = ChatRequest(
@@ -107,61 +92,35 @@ class ToolCallingHandler(
                 temperature = temperature ?: config.temperature
             )
             
+            logger.trace("Sending request to LLM (messages: ${request.messages.size})")
             val response = llmProvider.sendRequest(request)
             lastResponse = response
-            
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A,B,D","location":"ToolCallingHandler.kt:85","message":"LLM response received","data":{"responseLength":${response.content.length},"responsePreview":${response.content.take(200).replace("\"", "\\\"")}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
+            logger.debug("Received LLM response (length: ${response.content.length})")
             
             // Check for tool requests
             val toolRequests = parser.parseToolRequests(response.content)
-            
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"ToolCallingHandler.kt:87","message":"Parsed tool requests","data":{"toolRequestsCount":${toolRequests.size},"toolNames":${toolRequests.map { it.toolName }}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
+            logger.debug("Parsed ${toolRequests.size} tool request(s): ${toolRequests.map { it.toolName }}")
             
             if (toolRequests.isEmpty()) {
                 // No tool requests - this is the final answer
-                // #region agent log
-                java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                    """{"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"ToolCallingHandler.kt:90","message":"No tool requests - returning final answer","data":{},"timestamp":${System.currentTimeMillis()}}\n"""
-                )
-                // #endregion
+                logger.info("No tool requests found, returning final answer (iteration $iteration)")
                 messageHistory.add(Message.create(MessageRole.ASSISTANT, response.content))
                 return response
             }
             
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ToolCallingHandler.kt:95","message":"Tool requests found - executing tools","data":{"toolCount":${toolRequests.size}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
+            logger.info("Executing ${toolRequests.size} tool(s) in iteration $iteration")
             
             // Add assistant message with tool requests
             messageHistory.add(Message.create(MessageRole.ASSISTANT, response.content))
             
             // Execute tools and collect results
             val toolResults = executeTools(toolRequests)
-            
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ToolCallingHandler.kt:101","message":"Tools executed","data":{"resultsCount":${toolResults.size},"successCount":${toolResults.count { it.second is McpResult.Success }}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
+            val successCount = toolResults.count { it.second is McpResult.Success }
+            logger.info("Tool execution completed: $successCount/${toolResults.size} successful")
             
             // Format tool results for LLM
             val toolResultsText = formatToolResults(toolRequests, toolResults)
-            
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ToolCallingHandler.kt:105","message":"Adding tool results to history","data":{"resultsTextLength":${toolResultsText.length}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
+            logger.trace("Tool results formatted (length: ${toolResultsText.length})")
             
             // Add tool results as a user message (LLM will process them)
             messageHistory.add(Message.create(
@@ -169,20 +128,11 @@ class ToolCallingHandler(
                 "Tool execution results:\n$toolResultsText\n\nPlease provide your final answer based on these results."
             ))
             
-            // #region agent log
-            java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-                """{"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"ToolCallingHandler.kt:112","message":"Loop continuing to next iteration","data":{"newHistorySize":${messageHistory.size}},"timestamp":${System.currentTimeMillis()}}\n"""
-            )
-            // #endregion
+            logger.debug("Continuing to next iteration (new history size: ${messageHistory.size})")
         }
         
-        // #region agent log
-        java.io.File("/Users/vladimir.gromov/Code/AILEARN/aiLearn/.cursor/debug.log").appendText(
-            """{"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"ToolCallingHandler.kt:115","message":"Max iterations reached","data":{},"timestamp":${System.currentTimeMillis()}}\n"""
-        )
-        // #endregion
-        
         // Max iterations reached
+        logger.warn("Maximum tool calling iterations ($maxIterations) reached")
         return lastResponse ?: ChatResponse("Error: Maximum tool calling iterations reached", null)
     }
     
@@ -190,11 +140,20 @@ class ToolCallingHandler(
      * Gets description of available tools for LLM.
      */
     private suspend fun getToolsDescription(): List<McpToolInfo> {
-        if (mcpService == null) return emptyList()
+        if (mcpService == null) {
+            logger.debug("MCP service not available, no tools")
+            return emptyList()
+        }
         
         return when (val result = mcpService.getAvailableTools()) {
-            is McpResult.Success -> result.value
-            is McpResult.Error -> emptyList()
+            is McpResult.Success -> {
+                logger.debug("Retrieved ${result.value.size} tools from MCP service")
+                result.value
+            }
+            is McpResult.Error -> {
+                logger.warn("Failed to get tools from MCP service: ${result.error}")
+                emptyList()
+            }
         }
     }
     
@@ -205,21 +164,28 @@ class ToolCallingHandler(
         basePrompt: String,
         tools: List<McpToolInfo>
     ): String {
-        val toolsDescription = buildString {
-            appendLine("\n\nYou have access to the following tools:")
-            tools.forEachIndexed { index, tool ->
-                appendLine("${index + 1}. ${tool.name}")
-                tool.description?.let { appendLine("   Description: $it") }
-                tool.inputSchema?.let { appendLine("   Parameters: $it") }
+        val toolsDescription = tools.joinToString("\n") { tool ->
+            buildString {
+                append("- ${tool.name}")
+                tool.description?.let { append(": $it") }
+                tool.inputSchema?.let { append("\n  Input Schema: $it") }
             }
-            appendLine("\nTo use a tool, respond with a JSON object in this format:")
-            appendLine("""{"tool": "tool_name", "arguments": {"param1": "value1", "param2": "value2"}}""")
-            appendLine("\nYou can request multiple tools by using an array:")
-            appendLine("""[{"tool": "tool1", "arguments": {...}}, {"tool": "tool2", "arguments": {...}}]""")
-            appendLine("\nAfter tool execution, you will receive the results and should provide your final answer.")
         }
         
-        return basePrompt + toolsDescription
+        return """You are an expert AI agent with access to MCP servers. ALWAYS use available MCP tools BEFORE answering or assuming information.
+
+Available MCP tools (from list_tools response):
+$toolsDescription
+
+CRITICAL RULES:
+1. If task requires external action/data (file ops, reminders, Docker, Android ADB) → IMMEDIATELY call EXACT matching tool with VALID JSON args per schema.
+2. NEVER fabricate data/results. If tool needed → call it FIRST.
+3. After tool response: analyze output, call follow-up tools if needed, THEN respond.
+4. Respond ONLY with tool call JSON when tool required: {"tool": "exact_name", "arguments": {...}}
+5. Chain tools: e.g. list_reminders → claimDue → ackSent.
+6. Environment: Docker Android emulator; real device via ADB.
+
+User task:"""
     }
     
     /**
@@ -229,13 +195,20 @@ class ToolCallingHandler(
         toolRequests: List<ToolRequest>
     ): List<Pair<ToolRequest, McpResult<String>>> {
         if (mcpService == null) {
+            logger.warn("MCP service not available, cannot execute tools")
             return toolRequests.map { it to McpResult.Error(
                 core.mcp.McpError.NotConfigured("MCP service not available")
             ) }
         }
         
         return toolRequests.map { request ->
-            request to mcpService.callTool(request.toolName, request.arguments)
+            logger.debug("Executing tool: ${request.toolName}")
+            val result = mcpService.callTool(request.toolName, request.arguments)
+            when (result) {
+                is McpResult.Success -> logger.debug("Tool '${request.toolName}' executed successfully")
+                is McpResult.Error -> logger.warn("Tool '${request.toolName}' execution failed: ${result.error}")
+            }
+            request to result
         }
     }
     

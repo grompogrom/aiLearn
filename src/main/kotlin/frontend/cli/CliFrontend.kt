@@ -11,6 +11,9 @@ import core.reminder.ReminderChecker
 import frontend.Frontend
 import frontend.UserInput
 import frontend.UserOutput
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger(CliFrontend::class.java)
 
 /**
  * Command-line interface frontend implementation.
@@ -28,6 +31,7 @@ class CliFrontend(
     private val tokenCalculator = TokenCostCalculator(config)
 
     override suspend fun start(conversationManager: ConversationManager) {
+        logger.info("Starting CLI frontend")
         printWelcomeMessage()
 
         var dialogActive = true
@@ -37,21 +41,27 @@ class CliFrontend(
 
             when {
                 userInput.isExit -> {
+                    logger.info("User requested exit")
                     println("Завершение работы...")
                     break
                 }
                 userInput.content.lowercase() in clearHistoryCommands -> {
+                    logger.debug("User requested history clear")
                     handleClearHistory(conversationManager)
                 }
                 userInput.content.lowercase() in mcpCommands -> {
+                    logger.debug("User requested MCP command")
                     handleMcpCommand()
                 }
                 userInput.content.lowercase() in reminderCommands -> {
+                    logger.debug("User requested reminder command")
                     handleReminderCommand()
                 }
                 else -> {
+                    logger.debug("Processing user request (length: ${userInput.content.length})")
                     val shouldContinue = handleUserRequest(conversationManager, userInput.content)
                     if (!shouldContinue) {
+                        logger.info("Dialog ended by LLM response")
                         dialogActive = false
                         println("\n=== Диалог завершен ===")
                     }
@@ -59,6 +69,7 @@ class CliFrontend(
             }
         }
 
+        logger.info("CLI frontend stopped")
         println("Программа завершена.")
     }
     
@@ -124,26 +135,34 @@ class CliFrontend(
 
     private suspend fun handleClearHistory(conversationManager: ConversationManager) {
         try {
+            logger.info("Clearing conversation history")
             conversationManager.clearHistory()
+            logger.info("Conversation history cleared successfully")
             println("\n✓ История диалога успешно очищена.")
         } catch (e: Exception) {
+            logger.error("Error clearing conversation history", e)
             println("\n✗ Ошибка при очистке истории: ${e.message}")
         }
     }
 
     private suspend fun handleMcpCommand() {
+        logger.debug("Handling MCP command")
         val service = mcpService
         if (service == null) {
+            logger.warn("MCP service not available")
             println("\nMCP сервер не настроен. Убедитесь, что заданы переменные окружения AILEARN_MCP_SSE_HOST и связанные настройки.")
             return
         }
 
         println("\nЗапрос списка доступных MCP инструментов...")
+        logger.debug("Requesting available MCP tools")
 
         when (val result = service.getAvailableTools()) {
             is McpResult.Success -> {
                 val tools = result.value
+                logger.info("Retrieved ${tools.size} MCP tools")
                 if (tools.isEmpty()) {
+                    logger.warn("MCP server returned no tools")
                     println("MCP сервер не вернул ни одного инструмента.")
                     return
                 }
@@ -162,6 +181,7 @@ class CliFrontend(
                 println("=======================")
             }
             is McpResult.Error -> {
+                logger.error("Failed to get MCP tools: ${result.error}")
                 when (val error = result.error) {
                     is McpError.NotConfigured -> {
                         println("\nMCP сервер не настроен: ${error.message}")
@@ -211,11 +231,13 @@ class CliFrontend(
             val response = conversationManager.sendRequest(userInput)
             val output = formatResponse(response)
             
+            logger.debug("Response formatted (isDialogEnd: ${output.isDialogEnd})")
             println(output.content)
             output.tokenUsage?.let { print(it) }
 
             !output.isDialogEnd
         } catch (e: Exception) {
+            logger.error("Error handling user request", e)
             println("\nПроизошла ошибка: ${e.message}")
             println("Попробуйте снова или введите 'exit' для выхода.")
             true // Continue dialog on error

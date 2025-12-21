@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Define log file location -->
+    <property name="LOG_FILE" value="ailearn.log"/>
+    
+    <!-- File appender - logs only to file, no console output -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- Daily rollover with size limit -->
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+            <!-- Maximum file size before rollover -->
+            <maxFileSize>100MB</maxFileSize>
+            <!-- Keep 30 days of logs -->
+            <maxHistory>30</maxHistory>
+            <!-- Limit total size to 1GB -->
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+    
+    <!-- Root logger - file only, no console -->
+    <root level="INFO">
+        <appender-ref ref="FILE"/>
+    </root>
+    
+    <!-- Application-specific loggers -->
+    <logger name="api.mcp" level="DEBUG"/>
+    <logger name="core.conversation" level="DEBUG"/>
+    <logger name="core.memory" level="DEBUG"/>
+    <logger name="api.perplexity" level="DEBUG"/>
+    <logger name="core.config" level="DEBUG"/>
+    
+    <!-- Reduce noise from external libraries -->
+    <logger name="io.ktor" level="WARN"/>
+    <logger name="io.modelcontextprotocol" level="WARN"/>
+</configuration>
+

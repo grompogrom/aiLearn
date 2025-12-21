@@ -8,6 +8,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger(ReminderChecker::class.java)
 
 /**
  * Callback type for reminder check results.
@@ -41,22 +44,26 @@ class ReminderChecker(
      */
     fun start() {
         if (isRunning) {
+            logger.debug("Reminder checker already running")
             return
         }
+        logger.info("Starting reminder checker")
         isRunning = true
         
         scope.launch {
+            logger.debug("Reminder checker background task started")
             while (isActive && isRunning) {
                 try {
                     checkReminders()
                 } catch (e: Exception) {
                     // Log error but continue running
-                    System.err.println("Warning: Reminder check failed: ${e.message}")
+                    logger.warn("Reminder check failed", e)
                 }
                 
                 // Wait 60 seconds before next check
                 delay(60_000L)
             }
+            logger.info("Reminder checker background task stopped")
         }
     }
     
@@ -64,6 +71,7 @@ class ReminderChecker(
      * Stops the periodic reminder checking.
      */
     fun stop() {
+        logger.info("Stopping reminder checker")
         isRunning = false
     }
     
@@ -77,6 +85,7 @@ class ReminderChecker(
         } else {
             start()
         }
+        logger.info("Reminder checker toggled: ${if (isRunning) "ON" else "OFF"}")
         return isRunning
     }
     
@@ -87,17 +96,21 @@ class ReminderChecker(
      * 3. Prints the LLM response
      */
     private suspend fun checkReminders() {
+        logger.debug("Performing reminder check")
         if (mcpService == null) {
             // MCP service not available, skip check
+            logger.debug("MCP service not available, skipping reminder check")
             return
         }
         
         // Call reminder.list tool
+        logger.trace("Calling reminder.list tool")
         val toolResult = mcpService.callTool("reminder.list", "{}")
         
         when (toolResult) {
             is McpResult.Success -> {
                 val reminderData = toolResult.value
+                logger.debug("Reminder list retrieved (length: ${reminderData.length})")
                 
                 // Build prompt for LLM
                 val prompt = buildString {
@@ -106,14 +119,16 @@ class ReminderChecker(
                 }
                 
                 // Send to LLM without saving to history
+                logger.trace("Sending reminder data to LLM for processing")
                 val response = conversationManager.sendRequestWithoutHistory(prompt)
+                logger.debug("Received LLM response for reminders (length: ${response.content.length})")
                 
                 // Print the response via callback
                 outputCallback?.invoke(response.content)
             }
             is McpResult.Error -> {
                 // Log error but don't print to user (silent failure)
-                System.err.println("Warning: Failed to call reminder.list: ${toolResult.error}")
+                logger.warn("Failed to call reminder.list tool: ${toolResult.error}")
             }
         }
     }

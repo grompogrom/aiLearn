@@ -15,6 +15,9 @@ import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger(McpStreamableHttpClient::class.java)
 
 /**
  * Infrastructure client for communicating with an MCP server over Streamable HTTP.
@@ -45,25 +48,28 @@ class McpStreamableHttpClient(
      * Opens a StreamableHttp connection to the MCP server and waits for a tools-list response.
      */
     override suspend fun listTools(): McpResult<List<McpToolInfo>> {
+        logger.debug("Listing tools from MCP server (StreamableHttp): ${serverConfig.id}")
         return try {
             ensureConnection()
             val tools = mcpClient!!.listTools()
-            McpResult.Success(
-                tools.tools.map { 
-                    McpToolInfo(
-                        it.name, 
-                        it.description, 
-                        it.inputSchema?.toString()
-                    )
-                }
-            )
+            val toolList = tools.tools.map { 
+                McpToolInfo(
+                    it.name, 
+                    it.description, 
+                    it.inputSchema.toString()
+                )
+            }
+            logger.info("Successfully retrieved ${toolList.size} tools from MCP server: ${serverConfig.id}")
+            McpResult.Success(toolList)
         } catch (e: TimeoutCancellationException) {
+            logger.warn("Timeout while listing tools from MCP server: ${serverConfig.id}", e)
             McpResult.Error(
                 McpError.Timeout(
                     "Timed out while waiting for MCP tools response: ${e.message ?: "timeout"}"
                 )
             )
         } catch (e: Exception) {
+            logger.error("Failed to list tools from MCP server: ${serverConfig.id}", e)
             McpResult.Error(
                 McpError.ConnectionFailed(
                     message = "Failed to connect to MCP server: ${e.message}",
@@ -77,10 +83,12 @@ class McpStreamableHttpClient(
      * Executes a tool via MCP.
      */
     override suspend fun callTool(toolName: String, arguments: String): McpResult<String> {
+        logger.debug("Calling tool '$toolName' on MCP server (StreamableHttp): ${serverConfig.id}")
         return try {
             ensureConnection()
             val json = Json { ignoreUnknownKeys = true }
             val args = json.parseToJsonElement(arguments).jsonObject
+            logger.trace("Tool arguments parsed: $arguments")
             
             val result = mcpClient!!.callTool(toolName, args)
             
@@ -134,25 +142,29 @@ class McpStreamableHttpClient(
                 }
                 
                 if (errorMessage != null) {
+                    logger.warn("Tool '$toolName' execution returned error on server ${serverConfig.id}: $errorMessage")
                     return McpResult.Error(
                         McpError.ServerError("Tool execution error: $errorMessage")
                     )
                 } else {
                     // No error found, but also no content - this might be a valid empty result
-                    // Return success with empty string rather than error
+                    logger.debug("Tool '$toolName' returned empty result (no error)")
                     return McpResult.Success("")
                 }
             }
             
             // We have content - return success
+            logger.debug("Tool '$toolName' executed successfully, result length: ${resultString.length}")
             McpResult.Success(resultString)
         } catch (e: TimeoutCancellationException) {
+            logger.warn("Timeout while calling tool '$toolName' on MCP server: ${serverConfig.id}", e)
             McpResult.Error(
                 McpError.Timeout(
                     "Timed out while calling MCP tool: ${e.message ?: "timeout"}"
                 )
             )
         } catch (e: Exception) {
+            logger.error("Failed to call tool '$toolName' on MCP server: ${serverConfig.id}", e)
             McpResult.Error(
                 McpError.ConnectionFailed(
                     message = "Failed to call MCP tool '$toolName': ${e.message}",
@@ -164,6 +176,7 @@ class McpStreamableHttpClient(
     
     private suspend fun ensureConnection() {
         if (transport == null || mcpClient == null) {
+            logger.debug("Establishing StreamableHttp connection to MCP server: ${serverConfig.id} at ${serverConfig.getConnectionUrl()}")
             transport = StreamableHttpClientTransport(
                 client = client,
                 url = serverConfig.getConnectionUrl(),
@@ -177,13 +190,18 @@ class McpStreamableHttpClient(
             )
             
             mcpClient!!.connect(transport!!)
+            logger.info("Successfully connected to MCP server via StreamableHttp: ${serverConfig.id}")
+        } else {
+            logger.trace("Connection to MCP server already established: ${serverConfig.id}")
         }
     }
 
     override fun close() {
+        logger.debug("Closing MCP StreamableHttp client: ${serverConfig.id}")
         mcpClient = null
         transport = null
         client.close()
+        logger.info("MCP StreamableHttp client closed: ${serverConfig.id}")
     }
 }
 

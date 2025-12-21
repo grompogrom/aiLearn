@@ -85,16 +85,16 @@ object McpConfig {
     val servers: List<McpServerConfig> = listOf(
         McpServerConfig(
             id = "default",
-            baseUrl = "http://127.0.0.1:3002/sse",
+            baseUrl = "http://127.0.0.1:3008/mcp",
             transportType = McpTransportType.SSE,
             requestTimeoutMillis = 15_000L
         ),
-        McpServerConfig(
-            id = "streamable-http-server",
-            baseUrl = "http://127.0.0.1:8000/mcp",
-            transportType = McpTransportType.STREAMABLE_HTTP,
-            requestTimeoutMillis = 15_000L
-        )
+        // McpServerConfig(
+        //     id = "streamable-http-server",
+        //     baseUrl = "http://127.0.0.1:8000/mcp",
+        //     transportType = McpTransportType.STREAMABLE_HTTP,
+        //     requestTimeoutMillis = 15_000L
+        // )
     )
     
     /**

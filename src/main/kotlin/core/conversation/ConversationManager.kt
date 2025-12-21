@@ -12,6 +12,9 @@ import core.provider.LlmProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger(ConversationManager::class.java)
 
 /**
  * Callback type for summarization events.
@@ -43,19 +46,26 @@ class ConversationManager(
      * Should be called after construction if memory persistence is enabled.
      */
     suspend fun initialize() {
+        logger.debug("Initializing conversation manager (useMessageHistory: ${config.useMessageHistory})")
         if (config.useMessageHistory && memoryStore != null) {
+            logger.debug("Loading conversation history from memory store")
             val loadedHistory = memoryStore.loadHistory()
             if (loadedHistory.isNotEmpty()) {
+                logger.info("Loaded ${loadedHistory.size} messages from history")
                 messageHistory.clear()
                 messageHistory.addAll(loadedHistory)
                 return
+            } else {
+                logger.debug("No history found in memory store")
             }
         }
         
         // If no history loaded, initialize with system prompt
         if (config.useMessageHistory) {
+            logger.debug("Initializing with system prompt")
             messageHistory.add(Message.create(MessageRole.SYSTEM, config.systemPrompt))
         }
+        logger.info("Conversation manager initialized")
     }
     
     // Track the last response's token usage to determine if summarization is needed
@@ -78,9 +88,11 @@ class ConversationManager(
      * If MCP service is available and message history is enabled, tool calling is used.
      */
     suspend fun sendRequest(userContent: String, temperature: Double? = null): ChatResponse {
+        logger.debug("Processing user request (content length: ${userContent.length}, temperature: ${temperature ?: config.temperature})")
         // Check if summarization is needed before processing the new request
         // This check uses the previous response's token usage to decide
         if (shouldTriggerSummarization()) {
+            logger.info("Summarization threshold reached, triggering summarization")
             return handleSummarizationAndContinue(userContent, temperature)
         }
         
@@ -108,6 +120,7 @@ class ConversationManager(
         userContent: String,
         temperature: Double?
     ): ChatResponse {
+        logger.info("Starting conversation summarization (history size: ${messageHistory.size})")
         // Notify that summarization is starting
         summarizationCallback?.invoke(true)
         
@@ -115,7 +128,9 @@ class ConversationManager(
         val currentHistory = messageHistory.toList()
         
         // Request summary from the AI using dedicated summarization configuration
+        logger.debug("Requesting summary from LLM")
         val summary = summarizer.summarizeConversation(currentHistory)
+        logger.info("Summarization complete (summary length: ${summary.length})")
         
         // Replace the conversation history with system prompt enhanced with summary context
         // This maintains proper message alternation while providing context
@@ -136,6 +151,7 @@ class ConversationManager(
         summarizationCallback?.invoke(false)
         
         // Now process the actual user request with the summary context in the system prompt
+        logger.debug("Processing user request after summarization")
         return processRequest(userContent, temperature)
     }
     
@@ -145,6 +161,7 @@ class ConversationManager(
     private suspend fun processRequest(userContent: String, temperature: Double?): ChatResponse {
         // Use tool calling handler if available and message history is enabled
         if (toolCallingHandler != null && config.useMessageHistory) {
+            logger.debug("Processing request with tool calling enabled")
             val response = toolCallingHandler.processWithTools(
                 userContent,
                 messageHistory,
@@ -152,10 +169,12 @@ class ConversationManager(
             )
             // Track usage
             lastResponseUsage = response.usage
+            logger.debug("Tool calling completed (usage: ${response.usage})")
             saveHistoryAsync()
             return response
         } else {
             // Normal flow without tools
+            logger.debug("Processing request without tool calling")
             return sendRequestInternal(userContent, temperature)
         }
     }
@@ -165,6 +184,7 @@ class ConversationManager(
      * If message history is enabled, reinitializes with system prompt.
      */
     suspend fun clearHistory() {
+        logger.info("Clearing conversation history")
         messageHistory.clear()
         lastResponseUsage = null
         
@@ -173,23 +193,29 @@ class ConversationManager(
         }
         
         clearMemoryStore()
+        logger.info("Conversation history cleared")
     }
     
     /**
      * Clears the memory store, handling errors gracefully.
      */
     private suspend fun clearMemoryStore() {
-        if (memoryStore == null) return
+        if (memoryStore == null) {
+            logger.trace("Memory store not available, skipping clear")
+            return
+        }
         
         try {
+            logger.debug("Clearing memory store")
             memoryStore.clearHistory()
             if (config.useMessageHistory) {
                 // Save the new state with just system prompt
                 memoryStore.saveHistory(messageHistory.toList())
             }
+            logger.debug("Memory store cleared successfully")
         } catch (e: Exception) {
             // Log error but don't crash - persistence is best effort
-            System.err.println("Warning: Failed to clear history: ${e.message}")
+            logger.warn("Failed to clear memory store: ${e.message}", e)
         }
     }
 
@@ -199,11 +225,13 @@ class ConversationManager(
      */
     private suspend fun sendRequestInternal(userContent: String, temperature: Double?): ChatResponse {
         val request = if (config.useMessageHistory) {
+            logger.debug("Adding user message to history (history size: ${messageHistory.size})")
             messageHistory.add(Message.create(MessageRole.USER, userContent))
             // Save history after adding user message
             saveHistoryAsync()
             createChatRequest(temperature ?: config.temperature)
         } else {
+            logger.debug("Creating request without history")
             val messages = listOf(
                 Message.create(MessageRole.SYSTEM, config.systemPrompt),
                 Message.create(MessageRole.USER, userContent)
@@ -216,12 +244,15 @@ class ConversationManager(
             )
         }
 
+        logger.debug("Sending request to LLM provider (messages: ${request.messages.size})")
         val response = llmProvider.sendRequest(request)
+        logger.debug("Received response from LLM (content length: ${response.content.length}, usage: ${response.usage})")
 
         if (config.useMessageHistory) {
             messageHistory.add(Message.create(MessageRole.ASSISTANT, response.content))
             // Store the response usage for the next summarization check
             lastResponseUsage = response.usage
+            logger.debug("Added assistant response to history (history size: ${messageHistory.size})")
             // Save history after adding assistant response
             saveHistoryAsync()
         }
@@ -236,10 +267,12 @@ class ConversationManager(
         if (config.useMessageHistory && memoryStore != null) {
             saveScope.launch {
                 try {
+                    logger.trace("Saving conversation history (${messageHistory.size} messages)")
                     memoryStore.saveHistory(messageHistory.toList())
+                    logger.trace("Conversation history saved successfully")
                 } catch (e: Exception) {
                     // Log error but don't crash - persistence is best effort
-                    System.err.println("Warning: Failed to save conversation history: ${e.message}")
+                    logger.warn("Failed to save conversation history: ${e.message}", e)
                 }
             }
         }
@@ -264,6 +297,7 @@ class ConversationManager(
      * @return ChatResponse with content and token usage
      */
     suspend fun sendRequestWithoutHistory(userContent: String, temperature: Double? = null): ChatResponse {
+        logger.debug("Sending request without history (content length: ${userContent.length})")
         val messages = listOf(
             Message.create(MessageRole.SYSTEM, config.systemPrompt),
             Message.create(MessageRole.USER, userContent)
@@ -276,6 +310,8 @@ class ConversationManager(
             temperature = temperature ?: config.temperature
         )
         
-        return llmProvider.sendRequest(request)
+        val response = llmProvider.sendRequest(request)
+        logger.debug("Received response without history (content length: ${response.content.length})")
+        return response
     }
 }

@@ -5,10 +5,13 @@ import core.domain.Message
 import core.domain.MessageRole
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
+
+private val logger = LoggerFactory.getLogger(SqliteMemoryStore::class.java)
 
 /**
  * SQLite-based implementation of MemoryStore.
@@ -17,11 +20,13 @@ import java.sql.SQLException
 class SqliteMemoryStore(private val config: AppConfig) : MemoryStore {
     private val dbFile: File by lazy {
         val path = config.memoryStorePath
-        if (path != null && path.isNotEmpty()) {
+        val file = if (path != null && path.isNotEmpty()) {
             File(path)
         } else {
             File("ailearn.history.db")
         }
+        logger.debug("Using SQLite memory store file: ${file.absolutePath}")
+        file
     }
     
     private val connection: Connection by lazy {
@@ -29,6 +34,7 @@ class SqliteMemoryStore(private val config: AppConfig) : MemoryStore {
     }
     
     private fun initializeDatabase(): Connection {
+        logger.debug("Initializing SQLite database: ${dbFile.absolutePath}")
         val conn = DriverManager.getConnection("jdbc:sqlite:${dbFile.absolutePath}")
         
         // Create table if it doesn't exist
@@ -44,10 +50,12 @@ class SqliteMemoryStore(private val config: AppConfig) : MemoryStore {
             """.trimIndent())
         }
         
+        logger.info("SQLite database initialized successfully")
         return conn
     }
     
     override suspend fun saveHistory(messages: List<Message>) {
+        logger.debug("Saving ${messages.size} messages to SQLite database: ${dbFile.absolutePath}")
         withContext(Dispatchers.IO) {
             try {
                 connection.autoCommit = false
@@ -72,13 +80,13 @@ class SqliteMemoryStore(private val config: AppConfig) : MemoryStore {
                     }
                     insertStmt.executeBatch()
                     connection.commit()
+                    logger.debug("Successfully saved ${messages.size} messages to SQLite database")
                 } finally {
                     insertStmt.close()
                 }
             } catch (e: SQLException) {
                 connection.rollback()
-                System.err.println("Error saving conversation history: ${e.message}")
-                e.printStackTrace()
+                logger.error("Error saving conversation history to SQLite database: ${dbFile.absolutePath}", e)
             } finally {
                 connection.autoCommit = true
             }
@@ -86,6 +94,7 @@ class SqliteMemoryStore(private val config: AppConfig) : MemoryStore {
     }
     
     override suspend fun loadHistory(): List<Message> {
+        logger.debug("Loading history from SQLite database: ${dbFile.absolutePath}")
         return withContext(Dispatchers.IO) {
             try {
                 val messages = mutableListOf<Message>()
@@ -105,36 +114,40 @@ class SqliteMemoryStore(private val config: AppConfig) : MemoryStore {
                     }
                 }
                 
+                logger.info("Successfully loaded ${messages.size} messages from SQLite database")
                 messages
             } catch (e: SQLException) {
-                System.err.println("Error loading conversation history: ${e.message}")
-                e.printStackTrace()
+                logger.error("Error loading conversation history from SQLite database: ${dbFile.absolutePath}", e)
                 emptyList()
             }
         }
     }
     
     override suspend fun clearHistory() {
+        logger.debug("Clearing history from SQLite database: ${dbFile.absolutePath}")
         withContext(Dispatchers.IO) {
             try {
                 connection.prepareStatement("DELETE FROM conversation_history").use { stmt ->
-                    stmt.executeUpdate()
+                    val deleted = stmt.executeUpdate()
+                    logger.info("Cleared $deleted message(s) from SQLite database")
                 }
             } catch (e: SQLException) {
-                System.err.println("Error clearing conversation history: ${e.message}")
-                e.printStackTrace()
+                logger.error("Error clearing conversation history from SQLite database: ${dbFile.absolutePath}", e)
             }
         }
     }
     
     override fun close() {
+        logger.debug("Closing SQLite database connection: ${dbFile.absolutePath}")
         try {
             if (!connection.isClosed) {
                 connection.close()
+                logger.info("SQLite database connection closed")
+            } else {
+                logger.debug("SQLite database connection already closed")
             }
         } catch (e: SQLException) {
-            System.err.println("Error closing database connection: ${e.message}")
-            e.printStackTrace()
+            logger.error("Error closing SQLite database connection: ${dbFile.absolutePath}", e)
         }
     }
 }
