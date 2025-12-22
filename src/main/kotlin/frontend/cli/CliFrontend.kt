@@ -7,6 +7,7 @@ import core.domain.ChatResponse
 import core.mcp.McpError
 import core.mcp.McpResult
 import core.mcp.McpService
+import core.rag.IndexingService
 import core.reminder.ReminderChecker
 import frontend.Frontend
 import frontend.UserInput
@@ -21,13 +22,15 @@ private val logger = LoggerFactory.getLogger(CliFrontend::class.java)
 class CliFrontend(
     private val config: AppConfig,
     private val mcpService: McpService? = null,
-    private val reminderChecker: ReminderChecker? = null
+    private val reminderChecker: ReminderChecker? = null,
+    private val indexingService: IndexingService? = null
 ) : Frontend {
 
     private val exitCommands = setOf("exit", "quit")
     private val clearHistoryCommands = setOf("/clear", "/clearhistory", "clear", "clearhistory")
     private val mcpCommands = setOf("/mcp")
     private val reminderCommands = setOf("/reminder")
+    private val indexCommands = setOf("/index")
     private val tokenCalculator = TokenCostCalculator(config)
 
     override suspend fun start(conversationManager: ConversationManager) {
@@ -56,6 +59,10 @@ class CliFrontend(
                 userInput.content.lowercase() in reminderCommands -> {
                     logger.debug("User requested reminder command")
                     handleReminderCommand()
+                }
+                userInput.content.lowercase() in indexCommands -> {
+                    logger.debug("User requested index command")
+                    handleIndexCommand()
                 }
                 else -> {
                     logger.debug("Processing user request (length: ${userInput.content.length})")
@@ -107,6 +114,7 @@ class CliFrontend(
         println("\nВведите 'exit' или 'quit' для выхода в любой момент")
         println("Введите '/clear' или '/clearhistory' для очистки истории диалога")
         println("Введите '/reminder' для включения/выключения проверки напоминаний (по умолчанию выключена)")
+        println("Введите '/index' для создания RAG индекса из документов")
         println("temp is ${config.temperature}")
     }
 
@@ -221,6 +229,39 @@ class CliFrontend(
         } else {
             println("\nПроверка напоминаний уже ${if (nowRunning) "включена" else "выключена"}.")
         }
+    }
+    
+    private suspend fun handleIndexCommand() {
+        logger.debug("Handling index command")
+        val service = indexingService
+        if (service == null) {
+            logger.warn("Indexing service not available")
+            println("\nСервис индексации недоступен. Ollama не настроена.")
+            return
+        }
+        
+        println("\n=== Создание RAG индекса ===")
+        
+        try {
+            val chunksCount = service.buildIndex()
+            
+            if (chunksCount > 0) {
+                println("\n✅ Индекс успешно создан!")
+                println("Всего проиндексировано фрагментов: $chunksCount")
+                println("Индекс сохранен в: dataForRag/indexed/index.json")
+            } else {
+                println("\n⚠️ Индекс создан, но не содержит фрагментов.")
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to build index", e)
+            println("\n✗ Ошибка при создании индекса: ${e.message}")
+            println("Убедитесь, что:")
+            println("  - Ollama запущена (http://127.0.0.1:11434)")
+            println("  - Модель mxbai-embed-large доступна")
+            println("  - Директория dataForRag/raw содержит .md файлы")
+        }
+        
+        println("========================\n")
     }
 
     private suspend fun handleUserRequest(

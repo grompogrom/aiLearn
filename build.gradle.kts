@@ -22,6 +22,8 @@ dependencies {
     implementation("org.xerial:sqlite-jdbc:3.44.1.0")
     implementation("io.modelcontextprotocol:kotlin-sdk-client:0.8.1")
     testImplementation(kotlin("test"))
+    testImplementation("io.ktor:ktor-client-mock:3.3.2")
+    testImplementation("io.mockk:mockk:1.13.10")
 }
 
 tasks.test {

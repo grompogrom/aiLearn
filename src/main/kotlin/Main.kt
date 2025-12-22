@@ -11,7 +11,9 @@ import api.mcp.McpSseClient
 import api.mcp.McpServiceImpl
 import api.mcp.McpStreamableHttpClient
 import api.mcp.McpTransportType
+import api.ollama.OllamaClient
 import core.mcp.McpService
+import core.rag.IndexingService
 import frontend.cli.CliFrontend
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -55,57 +57,73 @@ fun main() = runBlocking {
         }
         logger.info("MCP clients created: ${mcpClients.size}")
         
-        // Use all MCP clients and create service
-        McpClientsManager(mcpClients).use {
-            val mcpService: McpService = McpServiceImpl(mcpClients)
-            logger.debug("MCP service created")
+        // Create Ollama client for RAG indexing
+        logger.debug("Creating Ollama client for RAG indexing")
+        OllamaClient().use { ollamaClient ->
+            logger.info("Ollama client created")
+            
+            // Create RAG indexing service
+            logger.debug("Creating RAG indexing service")
+            val indexingService = IndexingService(ollamaClient)
+            
+            // Set up progress callback for indexing
+            indexingService.progressCallback = { message ->
+                println(message)
+            }
+            logger.info("RAG indexing service created")
+            
+            // Use all MCP clients and create service
+            McpClientsManager(mcpClients).use {
+                val mcpService: McpService = McpServiceImpl(mcpClients)
+                logger.debug("MCP service created")
 
-            // Create LLM provider (currently Perplexity, but can be easily switched)
-            logger.debug("Creating LLM provider")
-            ProviderFactory.createFromConfig(config).use { provider ->
-                logger.info("LLM provider created: ${provider::class.simpleName}")
-                
-                // Create memory store for conversation persistence
-                logger.debug("Creating memory store (type: ${config.memoryStoreType})")
-                MemoryStoreFactory.create(config).use { memoryStore ->
-                    logger.info("Memory store created: ${memoryStore::class.simpleName}")
+                // Create LLM provider (currently Perplexity, but can be easily switched)
+                logger.debug("Creating LLM provider")
+                ProviderFactory.createFromConfig(config).use { provider ->
+                    logger.info("LLM provider created: ${provider::class.simpleName}")
                     
-                    // Create temporary frontend to get callbacks
-                    val tempFrontend = CliFrontend(config, mcpService, null)
-                    val summarizationCallback = tempFrontend.createSummarizationCallback()
-                    val reminderCheckCallback = tempFrontend.createReminderCheckCallback()
+                    // Create memory store for conversation persistence
+                    logger.debug("Creating memory store (type: ${config.memoryStoreType})")
+                    MemoryStoreFactory.create(config).use { memoryStore ->
+                        logger.info("Memory store created: ${memoryStore::class.simpleName}")
+                        
+                        // Create temporary frontend to get callbacks
+                        val tempFrontend = CliFrontend(config, mcpService, null, null)
+                        val summarizationCallback = tempFrontend.createSummarizationCallback()
+                        val reminderCheckCallback = tempFrontend.createReminderCheckCallback()
 
-                    // Create conversation manager with provider, config, summarization callback, memory store, and MCP service
-                    logger.debug("Creating conversation manager")
-                    val conversationManager = ConversationManager(
-                        provider,
-                        config,
-                        summarizationCallback,
-                        memoryStore,
-                        mcpService
-                    )
+                        // Create conversation manager with provider, config, summarization callback, memory store, and MCP service
+                        logger.debug("Creating conversation manager")
+                        val conversationManager = ConversationManager(
+                            provider,
+                            config,
+                            summarizationCallback,
+                            memoryStore,
+                            mcpService
+                        )
 
-                    // Initialize conversation manager (loads history if available)
-                    logger.debug("Initializing conversation manager")
-                    conversationManager.initialize()
-                    logger.info("Conversation manager initialized")
+                        // Initialize conversation manager (loads history if available)
+                        logger.debug("Initializing conversation manager")
+                        conversationManager.initialize()
+                        logger.info("Conversation manager initialized")
 
-                    // Create reminder checker (disabled by default, starts only with /reminder command)
-                    logger.debug("Creating reminder checker")
-                    val reminderChecker = ReminderChecker(
-                        conversationManager,
-                        mcpService,
-                        reminderCheckCallback
-                    )
-                    
-                    // Create final frontend with reminder checker reference
-                    logger.debug("Creating CLI frontend")
-                    val frontend = CliFrontend(config, mcpService, reminderChecker)
+                        // Create reminder checker (disabled by default, starts only with /reminder command)
+                        logger.debug("Creating reminder checker")
+                        val reminderChecker = ReminderChecker(
+                            conversationManager,
+                            mcpService,
+                            reminderCheckCallback
+                        )
+                        
+                        // Create final frontend with reminder checker and indexing service references
+                        logger.debug("Creating CLI frontend")
+                        val frontend = CliFrontend(config, mcpService, reminderChecker, indexingService)
 
-                    // Start frontend with conversation manager
-                    logger.info("Starting application frontend")
-                    frontend.start(conversationManager)
-                    logger.info("Application frontend stopped")
+                        // Start frontend with conversation manager
+                        logger.info("Starting application frontend")
+                        frontend.start(conversationManager)
+                        logger.info("Application frontend stopped")
+                    }
                 }
             }
         }
