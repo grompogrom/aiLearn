@@ -1,4 +1,9 @@
 .gradle
+*.log
+ailearn.history.json
+ailearn.history.db
+dataForRag/raw/
+dataForRag/indexed/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
