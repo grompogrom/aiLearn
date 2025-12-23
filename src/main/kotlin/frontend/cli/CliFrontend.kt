@@ -8,6 +8,8 @@ import core.mcp.McpError
 import core.mcp.McpResult
 import core.mcp.McpService
 import core.rag.IndexingService
+import core.rag.RagIndexNotFoundException
+import core.rag.RagQueryService
 import core.reminder.ReminderChecker
 import frontend.Frontend
 import frontend.UserInput
@@ -23,7 +25,8 @@ class CliFrontend(
     private val config: AppConfig,
     private val mcpService: McpService? = null,
     private val reminderChecker: ReminderChecker? = null,
-    private val indexingService: IndexingService? = null
+    private val indexingService: IndexingService? = null,
+    private val ragQueryService: RagQueryService? = null
 ) : Frontend {
 
     private val exitCommands = setOf("exit", "quit")
@@ -31,6 +34,7 @@ class CliFrontend(
     private val mcpCommands = setOf("/mcp")
     private val reminderCommands = setOf("/reminder")
     private val indexCommands = setOf("/index")
+    private val askCommands = setOf("/ask", "/rag")
     private val tokenCalculator = TokenCostCalculator(config)
 
     override suspend fun start(conversationManager: ConversationManager) {
@@ -63,6 +67,16 @@ class CliFrontend(
                 userInput.content.lowercase() in indexCommands -> {
                     logger.debug("User requested index command")
                     handleIndexCommand()
+                }
+                userInput.content.lowercase().startsWith("/ask ") || userInput.content.lowercase().startsWith("/rag ") -> {
+                    logger.debug("User requested RAG query")
+                    val command = userInput.content.trim()
+                    val question = when {
+                        command.lowercase().startsWith("/ask ") -> command.substring(5).trim()
+                        command.lowercase().startsWith("/rag ") -> command.substring(5).trim()
+                        else -> ""
+                    }
+                    handleAskCommand(question)
                 }
                 else -> {
                     logger.debug("Processing user request (length: ${userInput.content.length})")
@@ -115,6 +129,7 @@ class CliFrontend(
         println("Введите '/clear' или '/clearhistory' для очистки истории диалога")
         println("Введите '/reminder' для включения/выключения проверки напоминаний (по умолчанию выключена)")
         println("Введите '/index' для создания RAG индекса из документов")
+        println("Введите '/ask <вопрос>' для поиска ответа в базе знаний")
         println("temp is ${config.temperature}")
     }
 
@@ -262,6 +277,46 @@ class CliFrontend(
         }
         
         println("========================\n")
+    }
+    
+    private suspend fun handleAskCommand(question: String) {
+        logger.debug("Handling ask command with question: $question")
+        val service = ragQueryService
+        if (service == null) {
+            logger.warn("RAG query service not available")
+            println("\nRAG сервис недоступен. Ollama не настроена.")
+            return
+        }
+        
+        if (question.isBlank()) {
+            println("\nУкажите вопрос: /ask <ваш вопрос>")
+            return
+        }
+        
+        println("\n🔍 Поиск в базе знаний...")
+        
+        try {
+            val result = service.query(question)
+            
+            // Display retrieved chunks
+            println("\n📚 Найдено релевантных фрагментов: ${result.retrievedChunks.size}")
+            result.retrievedChunks.forEachIndexed { index, chunk ->
+                println("  ${index + 1}. [${chunk.source}] Релевантность: ${"%.2f".format(chunk.similarity)}")
+            }
+            
+            // Display LLM answer
+            println("\n🤖 Ответ:\n")
+            println(result.answer)
+            println()
+        } catch (e: RagIndexNotFoundException) {
+            logger.warn("RAG index not found", e)
+            println("\n✗ ${e.message}")
+            println("Используйте команду /index для создания индекса.")
+        } catch (e: Exception) {
+            logger.error("Failed to execute RAG query", e)
+            println("\n✗ Ошибка при выполнении запроса: ${e.message}")
+            println("Убедитесь, что Ollama запущена и индекс создан.")
+        }
     }
 
     private suspend fun handleUserRequest(

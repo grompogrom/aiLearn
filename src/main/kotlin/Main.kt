@@ -14,6 +14,7 @@ import api.mcp.McpTransportType
 import api.ollama.OllamaClient
 import core.mcp.McpService
 import core.rag.IndexingService
+import core.rag.RagQueryService
 import frontend.cli.CliFrontend
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -82,13 +83,18 @@ fun main() = runBlocking {
                 ProviderFactory.createFromConfig(config).use { provider ->
                     logger.info("LLM provider created: ${provider::class.simpleName}")
                     
+                    // Create RAG query service
+                    logger.debug("Creating RAG query service")
+                    val ragQueryService = RagQueryService(ollamaClient, provider, config)
+                    logger.info("RAG query service created")
+                    
                     // Create memory store for conversation persistence
                     logger.debug("Creating memory store (type: ${config.memoryStoreType})")
                     MemoryStoreFactory.create(config).use { memoryStore ->
                         logger.info("Memory store created: ${memoryStore::class.simpleName}")
                         
                         // Create temporary frontend to get callbacks
-                        val tempFrontend = CliFrontend(config, mcpService, null, null)
+                        val tempFrontend = CliFrontend(config, mcpService, null, null, null)
                         val summarizationCallback = tempFrontend.createSummarizationCallback()
                         val reminderCheckCallback = tempFrontend.createReminderCheckCallback()
 
@@ -115,9 +121,9 @@ fun main() = runBlocking {
                             reminderCheckCallback
                         )
                         
-                        // Create final frontend with reminder checker and indexing service references
+                        // Create final frontend with reminder checker, indexing service, and RAG query service references
                         logger.debug("Creating CLI frontend")
-                        val frontend = CliFrontend(config, mcpService, reminderChecker, indexingService)
+                        val frontend = CliFrontend(config, mcpService, reminderChecker, indexingService, ragQueryService)
 
                         // Start frontend with conversation manager
                         logger.info("Starting application frontend")
