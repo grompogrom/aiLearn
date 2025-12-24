@@ -66,7 +66,7 @@ object DefaultConfig {
     const val DEFAULT_DIALOG_END_MARKER = "###END###"
     const val DEFAULT_PRICE_PER_MILLION_TOKENS = 1.0
     const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 60_000L
-    const val DEFAULT_USE_MESSAGE_HISTORY = true
+    const val DEFAULT_USE_MESSAGE_HISTORY = false
     
     // Summarization defaults
     const val DEFAULT_ENABLE_SUMMARIZATION = true

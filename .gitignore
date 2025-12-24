@@ -51,3 +51,6 @@ bin/
 
 ### Gradle Properties ###
 gradle.properties
+
+### Config Files ###
+ailearn.config.properties

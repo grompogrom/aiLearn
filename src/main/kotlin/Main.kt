@@ -113,27 +113,68 @@ fun main() = runBlocking {
                     val ragQueryService = RagQueryService(ollamaClient, provider, config, reranker = reranker)
                     logger.info("RAG query service created")
                     
-                    // Create memory store for conversation persistence
-                    logger.debug("Creating memory store (type: ${config.memoryStoreType})")
-                    MemoryStoreFactory.create(config).use { memoryStore ->
-                        logger.info("Memory store created: ${memoryStore::class.simpleName}")
+                    // Create memory store for conversation persistence (only if useMessageHistory is enabled)
+                    if (config.useMessageHistory) {
+                        logger.debug("Creating memory store (type: ${config.memoryStoreType})")
+                        MemoryStoreFactory.create(config).use { memoryStore ->
+                            logger.info("Memory store created: ${memoryStore::class.simpleName}")
+                            
+                            // Create temporary frontend to get callbacks
+                            val tempFrontend = CliFrontend(config, mcpService, null, null, null)
+                            val summarizationCallback = tempFrontend.createSummarizationCallback()
+                            val reminderCheckCallback = tempFrontend.createReminderCheckCallback()
+
+                            // Create conversation manager with provider, config, summarization callback, memory store, and MCP service
+                            logger.debug("Creating conversation manager")
+                            val conversationManager = ConversationManager(
+                                provider,
+                                config,
+                                summarizationCallback,
+                                memoryStore,
+                                mcpService
+                            )
+
+                            // Initialize conversation manager (loads history if available)
+                            logger.debug("Initializing conversation manager")
+                            conversationManager.initialize()
+                            logger.info("Conversation manager initialized")
+
+                            // Create reminder checker (disabled by default, starts only with /reminder command)
+                            logger.debug("Creating reminder checker")
+                            val reminderChecker = ReminderChecker(
+                                conversationManager,
+                                mcpService,
+                                reminderCheckCallback
+                            )
+                            
+                            // Create final frontend with reminder checker, indexing service, and RAG query service references
+                            logger.debug("Creating CLI frontend")
+                            val frontend = CliFrontend(config, mcpService, reminderChecker, indexingService, ragQueryService)
+
+                            // Start frontend with conversation manager
+                            logger.info("Starting application frontend")
+                            frontend.start(conversationManager)
+                            logger.info("Application frontend stopped")
+                        }
+                    } else {
+                        logger.info("Memory store disabled (useMessageHistory = false)")
                         
                         // Create temporary frontend to get callbacks
                         val tempFrontend = CliFrontend(config, mcpService, null, null, null)
                         val summarizationCallback = tempFrontend.createSummarizationCallback()
                         val reminderCheckCallback = tempFrontend.createReminderCheckCallback()
 
-                        // Create conversation manager with provider, config, summarization callback, memory store, and MCP service
-                        logger.debug("Creating conversation manager")
+                        // Create conversation manager without memory store
+                        logger.debug("Creating conversation manager without memory store")
                         val conversationManager = ConversationManager(
                             provider,
                             config,
                             summarizationCallback,
-                            memoryStore,
+                            null,
                             mcpService
                         )
 
-                        // Initialize conversation manager (loads history if available)
+                        // Initialize conversation manager
                         logger.debug("Initializing conversation manager")
                         conversationManager.initialize()
                         logger.info("Conversation manager initialized")

@@ -1,0 +1,77 @@
+# aiLearn Configuration File
+# Copy this file to 'ailearn.config.properties' and fill in your values
+
+# ===== Required Settings =====
+# API key for LLM provider (required)
+api.key=your_api_key_here
+
+# ===== Basic Settings =====
+# API endpoint URL
+api.url=https://api.perplexity.ai/chat/completions
+# Model name
+model=sonar
+# Maximum tokens per request
+max.tokens=5000
+# Temperature (0.0-2.0)
+temperature=0.3
+# System prompt
+system.prompt=Answers must be short and succinct
+# Dialog end marker
+dialog.end.marker=###END###
+# Price per million tokens (for cost tracking)
+price.per.million.tokens=1.0
+# Request timeout in milliseconds
+request.timeout.millis=60000
+
+# ===== Message History Settings =====
+# Save message history between restarts (true/false, default: false)
+# When false: history is NOT saved, each restart begins fresh
+# When true: history is saved and loaded on next startup
+use.message.history=false
+
+# ===== Memory Store Settings =====
+# (Only used if use.message.history=true)
+# Type of memory store: "json" or "sqlite" (default: json)
+memory.store.type=json
+# Optional: custom path for history file/database
+# If not specified, uses default location in current directory
+# memory.store.path=ailearn.history.json
+
+# ===== Summarization Settings =====
+# Enable automatic conversation summarization (true/false, default: true)
+enable.summarization=true
+# Token threshold to trigger summarization (default: 4000)
+summarization.token.threshold=4000
+# Model for summarization (default: sonar)
+summarization.model=sonar
+# Max tokens for summarization request (default: 500)
+summarization.max.tokens=500
+# Temperature for summarization (default: 0.3)
+summarization.temperature=0.3
+# System prompt for summarization
+summarization.system.prompt=You are a helpful assistant that summarizes conversations concisely.
+# Summarization instruction prompt
+summarization.prompt=Please provide a brief summary of the conversation so far, capturing the key topics, questions, and answers discussed. Keep it concise and focused on the main points.
+
+# ===== RAG (Retrieval Augmented Generation) Settings =====
+# Enable re-ranking of RAG results (true/false, default: false)
+rag.reranking=false
+# Re-ranking provider: "ollama" or "llm" (default: ollama)
+rag.reranking.provider=ollama
+# Number of candidates for re-ranking (default: 15)
+rag.candidate.count=15
+# Model for re-ranking (default: qwen2.5)
+rag.rerank.model=qwen2.5
+# Filter threshold for RAG results (0.0-1.0, default: 0.7)
+rag.filter.threshold=0.7
+
+# ===== MCP (Model Context Protocol) Settings =====
+# MCP SSE protocol (default: http)
+mcp.sse.protocol=http
+# MCP SSE host (default: http://127.0.0.1)
+mcp.sse.host=http://127.0.0.1
+# MCP SSE port (default: 3002)
+mcp.sse.port=3002
+# MCP request timeout in milliseconds (default: 15000)
+mcp.request.timeout.millis=15000
+
