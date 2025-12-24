@@ -332,6 +332,28 @@ val servers: List<McpServerConfig> = listOf(
 - Tool calls are routed to the server that has the requested tool
 - If a tool exists in multiple servers, they are tried in order until one succeeds
 
+## RAG System
+
+The application includes a comprehensive RAG (Retrieval-Augmented Generation) system that enables context-aware AI responses by indexing and searching through your knowledge base.
+
+**Key Features:**
+- Document indexing with semantic embeddings (via Ollama)
+- Cosine similarity search for relevant chunks
+- Optional LLM re-ranking for improved relevance
+- Source attribution with relevance scores
+- Support for multiple file types
+
+**Quick Start:**
+```bash
+# Build index
+/index
+
+# Query knowledge base
+/ask What is RAG?
+```
+
+For complete RAG documentation, see [RAG_DESCRIPTION.md](RAG_DESCRIPTION.md).
+
 ## Potential Improvements & Extension Points
 
 ### Features
@@ -451,6 +473,12 @@ ApiClient(useHistory = true).use { client ->
     client.sendRequest("Continue conversation") // History continues from first request
 }
 ```
+
+## Related Documentation
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed architecture documentation
+- [RAG_DESCRIPTION.md](RAG_DESCRIPTION.md) - Complete RAG system documentation
+- [README.md](README.md) - Quick start guide (in Russian)
 
 ## Notes for AI Assistants
 

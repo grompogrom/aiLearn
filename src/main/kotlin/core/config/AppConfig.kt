@@ -88,6 +88,6 @@ object DefaultConfig {
     // RAG re-ranking defaults
     const val DEFAULT_RAG_RERANKING = false
     const val DEFAULT_RAG_RERANKING_PROVIDER = "ollama"
-    const val DEFAULT_RAG_CANDIDATE_COUNT = 20
+    const val DEFAULT_RAG_CANDIDATE_COUNT = 15
     const val DEFAULT_RAG_RERANK_MODEL = "qwen2.5"  // Can also use "qwen2.5:latest"
 }

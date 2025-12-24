@@ -224,6 +224,19 @@ memory.store.path=ailearn.history.json
 - Low-level modules (PerplexityProvider) implement abstractions
 - Dependencies flow inward: Frontend → Core → API
 
+## RAG System Integration
+
+The application includes a comprehensive RAG (Retrieval-Augmented Generation) system for context-aware responses. For complete RAG documentation, see [RAG_DESCRIPTION.md](RAG_DESCRIPTION.md).
+
+**Key RAG Components:**
+- **OllamaClient** - Embedding generation via Ollama API
+- **DocumentChunker** - Text splitting with overlap
+- **IndexingService** - Pipeline orchestration for indexing
+- **RagStorage** - JSON-based index persistence
+- **SimilaritySearch** - Cosine similarity for retrieval
+- **RagQueryService** - Query pipeline orchestration
+- **LlmReranker** - Optional two-stage retrieval with LLM re-ranking
+
 ## Extensibility
 
 ### Adding a New LLM Provider
@@ -432,3 +445,10 @@ The old files (`ApiClient.kt`, `Config.kt`, old `Main.kt`) are preserved for ref
 6. **Scalability**: Architecture supports growth
 7. **Tool Calling**: Custom tool calling layer enables MCP integration with any LLM provider
 8. **MCP Integration**: Standardized protocol for tool and data access
+9. **RAG System**: Integrated retrieval-augmented generation with semantic search and LLM re-ranking
+
+## Related Documentation
+
+- [PROJECT_DESCRIPTION.md](PROJECT_DESCRIPTION.md) - Complete project overview and usage guide
+- [RAG_DESCRIPTION.md](RAG_DESCRIPTION.md) - RAG system documentation (indexing, querying, re-ranking)
+- [README.md](README.md) - Quick start guide (in Russian)
