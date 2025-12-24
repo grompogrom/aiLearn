@@ -135,6 +135,20 @@ private class EnvironmentConfig : AppConfig {
     override val mcpRequestTimeoutMillis: Long
         get() = System.getenv("AILEARN_MCP_REQUEST_TIMEOUT_MILLIS")?.toLongOrNull()
             ?: DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS
+    
+    override val ragReranking: Boolean
+        get() = System.getenv("AILEARN_RAG_RERANKING")?.toBoolean()
+            ?: DefaultConfig.DEFAULT_RAG_RERANKING
+    
+    override val ragRerankingProvider: String
+        get() = System.getenv("AILEARN_RAG_RERANKING_PROVIDER") ?: DefaultConfig.DEFAULT_RAG_RERANKING_PROVIDER
+    
+    override val ragCandidateCount: Int
+        get() = System.getenv("AILEARN_RAG_CANDIDATE_COUNT")?.toIntOrNull()
+            ?: DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT
+    
+    override val ragRerankModel: String
+        get() = System.getenv("AILEARN_RAG_RERANK_MODEL") ?: DefaultConfig.DEFAULT_RAG_RERANK_MODEL
 }
 
 /**
@@ -195,6 +209,11 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val mcpSseHost: String get() = getString("mcp.sse.host", DefaultConfig.DEFAULT_MCP_SSE_HOST)
     override val mcpSsePort: Int get() = getInt("mcp.sse.port", DefaultConfig.DEFAULT_MCP_SSE_PORT)
     override val mcpRequestTimeoutMillis: Long get() = getLong("mcp.request.timeout.millis", DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS)
+    
+    override val ragReranking: Boolean get() = getBoolean("rag.reranking", DefaultConfig.DEFAULT_RAG_RERANKING)
+    override val ragRerankingProvider: String get() = getString("rag.reranking.provider", DefaultConfig.DEFAULT_RAG_RERANKING_PROVIDER)
+    override val ragCandidateCount: Int get() = getInt("rag.candidate.count", DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT)
+    override val ragRerankModel: String get() = getString("rag.rerank.model", DefaultConfig.DEFAULT_RAG_RERANK_MODEL)
 }
 
 /**
@@ -260,6 +279,11 @@ private class BuildConfigWrapper : AppConfig {
     override val mcpSseHost: String = DefaultConfig.DEFAULT_MCP_SSE_HOST
     override val mcpSsePort: Int = DefaultConfig.DEFAULT_MCP_SSE_PORT
     override val mcpRequestTimeoutMillis: Long = DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS
+    
+    override val ragReranking: Boolean = DefaultConfig.DEFAULT_RAG_RERANKING
+    override val ragRerankingProvider: String = DefaultConfig.DEFAULT_RAG_RERANKING_PROVIDER
+    override val ragCandidateCount: Int = DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT
+    override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
 }
 
 /**
@@ -293,6 +317,11 @@ private class DefaultAppConfig : AppConfig {
     override val mcpSseHost: String = DefaultConfig.DEFAULT_MCP_SSE_HOST
     override val mcpSsePort: Int = DefaultConfig.DEFAULT_MCP_SSE_PORT
     override val mcpRequestTimeoutMillis: Long = DefaultConfig.DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS
+    
+    override val ragReranking: Boolean = DefaultConfig.DEFAULT_RAG_RERANKING
+    override val ragRerankingProvider: String = DefaultConfig.DEFAULT_RAG_RERANKING_PROVIDER
+    override val ragCandidateCount: Int = DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT
+    override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
 }
 
 /**
@@ -329,4 +358,9 @@ private class CompositeConfig(
     override val mcpSseHost: String get() = primary.mcpSseHost.ifEmpty { fallback.mcpSseHost }
     override val mcpSsePort: Int get() = if (primary.mcpSsePort > 0) primary.mcpSsePort else fallback.mcpSsePort
     override val mcpRequestTimeoutMillis: Long get() = if (primary.mcpRequestTimeoutMillis > 0) primary.mcpRequestTimeoutMillis else fallback.mcpRequestTimeoutMillis
+    
+    override val ragReranking: Boolean get() = primary.ragReranking
+    override val ragRerankingProvider: String get() = primary.ragRerankingProvider.ifEmpty { fallback.ragRerankingProvider }
+    override val ragCandidateCount: Int get() = if (primary.ragCandidateCount > 0) primary.ragCandidateCount else fallback.ragCandidateCount
+    override val ragRerankModel: String get() = primary.ragRerankModel.ifEmpty { fallback.ragRerankModel }
 }

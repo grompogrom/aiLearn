@@ -20,12 +20,16 @@ class RagIndexNotFoundException : Exception("RAG index not found. Please run /in
  * 
  * @param source The source file name
  * @param text The chunk text content
- * @param similarity The similarity score (0.0 to 1.0)
+ * @param similarity The similarity score (0.0 to 1.0) - either cosine or LLM score
+ * @param cosineScore The original cosine similarity score (optional, for re-ranking display)
+ * @param llmScore The LLM re-ranking score (optional, for re-ranking display)
  */
 data class RetrievedChunk(
     val source: String,
     val text: String,
-    val similarity: Float
+    val similarity: Float,
+    val cosineScore: Float? = null,
+    val llmScore: Float? = null
 )
 
 /**
@@ -48,13 +52,15 @@ data class QueryResult(
  * @param config Application configuration for LLM settings
  * @param storage Storage handler for loading indexes
  * @param model The embedding model to use (default: mxbai-embed-large)
+ * @param reranker Optional LLM re-ranker for improving retrieval relevance
  */
 class RagQueryService(
     private val ollamaClient: OllamaClient,
     private val llmProvider: LlmProvider,
     private val config: AppConfig,
     private val storage: RagStorage = RagStorage(),
-    private val model: String = "mxbai-embed-large"
+    private val model: String = "mxbai-embed-large",
+    private val reranker: LlmReranker? = null
 ) {
     
     /**
@@ -103,14 +109,48 @@ class RagQueryService(
         val questionEmbedding = questionEmbeddings[0]
         logger.info("Question embedded successfully (dimension: ${questionEmbedding.size})")
         
-        // Step 3: Find top-K similar chunks
-        logger.debug("Searching for top-$topK similar chunks")
-        val topChunks = SimilaritySearch.findTopK(questionEmbedding, index, topK)
+        // Step 3: Find top-K similar chunks (or more candidates if re-ranking is enabled)
+        val candidateCount = if (config.ragReranking && reranker != null) {
+            config.ragCandidateCount
+        } else {
+            topK
+        }
         
-        if (topChunks.isEmpty()) {
+        logger.debug("Searching for top-$candidateCount similar chunks (re-ranking: ${config.ragReranking})")
+        val candidates = SimilaritySearch.findTopK(questionEmbedding, index, candidateCount)
+        
+        if (candidates.isEmpty()) {
             logger.warn("No relevant chunks found for query")
         } else {
-            logger.info("Found ${topChunks.size} relevant chunks")
+            logger.info("Found ${candidates.size} candidate chunks")
+        }
+        
+        // Step 3.5: Re-rank candidates if enabled
+        val rerankedChunks: List<RerankedChunk>? = if (config.ragReranking && reranker != null && candidates.isNotEmpty()) {
+            logger.info("Re-ranking ${candidates.size} candidates with LLM")
+            try {
+                val reranked = reranker.rerank(question, candidates)
+                val sorted = reranked.sortedByDescending { it.llmScore }.take(topK)
+                logger.info("Re-ranking complete, selected top-$topK from ${reranked.size} re-ranked chunks")
+                sorted
+            } catch (e: Exception) {
+                logger.error("Re-ranking failed, falling back to cosine scores", e)
+                null
+            }
+        } else {
+            null
+        }
+        
+        val topChunks = if (rerankedChunks != null) {
+            rerankedChunks.map { Pair(it.chunk, it.llmScore) }
+        } else {
+            candidates.take(topK)
+        }
+        
+        if (topChunks.isEmpty()) {
+            logger.warn("No relevant chunks found after re-ranking")
+        } else {
+            logger.info("Final selection: ${topChunks.size} chunks")
         }
         
         // Step 4: Format context
@@ -157,12 +197,26 @@ class RagQueryService(
         logger.info("Received answer from LLM (length: ${response.content.length} chars)")
         
         // Step 7: Build result
-        val retrievedChunks = topChunks.map { (chunk, similarity) ->
-            RetrievedChunk(
-                source = chunk.source,
-                text = chunk.text,
-                similarity = similarity
-            )
+        val retrievedChunks = if (rerankedChunks != null) {
+            // Include both cosine and LLM scores when re-ranking was used
+            rerankedChunks.map { reranked ->
+                RetrievedChunk(
+                    source = reranked.chunk.source,
+                    text = reranked.chunk.text,
+                    similarity = reranked.llmScore,
+                    cosineScore = reranked.originalScore,
+                    llmScore = reranked.llmScore
+                )
+            }
+        } else {
+            // Only cosine score when re-ranking was not used
+            topChunks.map { (chunk, similarity) ->
+                RetrievedChunk(
+                    source = chunk.source,
+                    text = chunk.text,
+                    similarity = similarity
+                )
+            }
         }
         
         logger.info("RAG query completed successfully")

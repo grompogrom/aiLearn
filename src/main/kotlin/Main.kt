@@ -15,6 +15,9 @@ import api.ollama.OllamaClient
 import core.mcp.McpService
 import core.rag.IndexingService
 import core.rag.RagQueryService
+import core.rag.LlmReranker
+import core.rag.OllamaReranker
+import core.rag.ProviderReranker
 import frontend.cli.CliFrontend
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
@@ -83,9 +86,31 @@ fun main() = runBlocking {
                 ProviderFactory.createFromConfig(config).use { provider ->
                     logger.info("LLM provider created: ${provider::class.simpleName}")
                     
+                    // Create RAG re-ranker if enabled
+                    val reranker: LlmReranker? = if (config.ragReranking) {
+                        logger.info("RAG re-ranking enabled with provider: ${config.ragRerankingProvider}")
+                        when (config.ragRerankingProvider.lowercase()) {
+                            "ollama" -> {
+                                logger.debug("Creating Ollama re-ranker with model: ${config.ragRerankModel}")
+                                OllamaReranker(ollamaClient, config.ragRerankModel)
+                            }
+                            "llm" -> {
+                                logger.debug("Creating LlmProvider re-ranker")
+                                ProviderReranker(provider, config)
+                            }
+                            else -> {
+                                logger.warn("Invalid ragRerankingProvider: ${config.ragRerankingProvider}, disabling re-ranking")
+                                null
+                            }
+                        }
+                    } else {
+                        logger.debug("RAG re-ranking disabled")
+                        null
+                    }
+                    
                     // Create RAG query service
                     logger.debug("Creating RAG query service")
-                    val ragQueryService = RagQueryService(ollamaClient, provider, config)
+                    val ragQueryService = RagQueryService(ollamaClient, provider, config, reranker = reranker)
                     logger.info("RAG query service created")
                     
                     // Create memory store for conversation persistence

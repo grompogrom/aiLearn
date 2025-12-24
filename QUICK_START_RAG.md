@@ -97,6 +97,33 @@ Expected output:
 | `/reminder` | Toggle reminder checks |
 | `exit` | Quit application |
 
+## 🎯 LLM Re-ranking (New Feature)
+
+Improve retrieval accuracy with two-stage search:
+1. Fast cosine similarity retrieves 20 candidates
+2. LLM evaluates and re-ranks for final selection
+
+**Enable with Ollama** (fast, free):
+```bash
+export AILEARN_RAG_RERANKING=true
+export AILEARN_RAG_RERANKING_PROVIDER=ollama
+export AILEARN_RAG_RERANK_MODEL=qwen2.5
+```
+
+**Enable with LlmProvider** (higher quality):
+```bash
+export AILEARN_RAG_RERANKING=true
+export AILEARN_RAG_RERANKING_PROVIDER=llm
+```
+
+**Output with re-ranking**:
+```
+📚 Найдено релевантных фрагментов: 3
+  1. [README.md] Cosine: 0.87 → LLM: 0.94
+  2. [ARCHITECTURE.md] Cosine: 0.82 → LLM: 0.89
+  3. [README.md.1] Cosine: 0.78 → LLM: 0.85
+```
+
 ## 🚀 How to Use
 
 **Basic Workflow:**
@@ -117,7 +144,8 @@ Expected output:
 
 ## 📖 Full Documentation
 
-- `RAG_IMPLEMENTATION_SUMMARY.md` - Complete implementation details
+- `RAG_IMPLEMENTATION_SUMMARY.md` - Complete RAG implementation details
+- `RAG_RERANKING_IMPLEMENTATION.md` - LLM re-ranking feature documentation
 - `TEST_RAG_PIPELINE.md` - Detailed testing guide
 - Plan file - Original design specification
 

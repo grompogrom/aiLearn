@@ -301,7 +301,12 @@ class CliFrontend(
             // Display retrieved chunks
             println("\n📚 Найдено релевантных фрагментов: ${result.retrievedChunks.size}")
             result.retrievedChunks.forEachIndexed { index, chunk ->
-                println("  ${index + 1}. [${chunk.source}] Релевантность: ${"%.2f".format(chunk.similarity)}")
+                // Check if re-ranking was used (both scores present)
+                if (chunk.cosineScore != null && chunk.llmScore != null) {
+                    println("  ${index + 1}. [${chunk.source}] Cosine: ${"%.2f".format(chunk.cosineScore)} → LLM: ${"%.2f".format(chunk.llmScore)}")
+                } else {
+                    println("  ${index + 1}. [${chunk.source}] Релевантность: ${"%.2f".format(chunk.similarity)}")
+                }
             }
             
             // Display LLM answer

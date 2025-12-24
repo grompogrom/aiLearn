@@ -43,6 +43,12 @@ interface AppConfig {
     val mcpSseHost: String
     val mcpSsePort: Int
     val mcpRequestTimeoutMillis: Long
+    
+    // RAG re-ranking configuration
+    val ragReranking: Boolean
+    val ragRerankingProvider: String
+    val ragCandidateCount: Int
+    val ragRerankModel: String
 }
 
 /**
@@ -50,7 +56,7 @@ interface AppConfig {
  */
 object DefaultConfig {
     const val DEFAULT_API_URL = "https://api.perplexity.ai/chat/completions"
-    const val DEFAULT_MODEL = "sonar-pro"
+    const val DEFAULT_MODEL = "sonar"
     const val DEFAULT_MAX_TOKENS = 5000
     const val DEFAULT_TEMPERATURE = 0.3
     const val DEFAULT_SYSTEM_PROMPT = "Answers must be short and succinct"
@@ -78,4 +84,10 @@ object DefaultConfig {
     const val DEFAULT_MCP_SSE_PORT = 3002
     const val DEFAULT_MCP_SSE_PATH = "/sse"
     const val DEFAULT_MCP_REQUEST_TIMEOUT_MILLIS = 15_000L
+    
+    // RAG re-ranking defaults
+    const val DEFAULT_RAG_RERANKING = false
+    const val DEFAULT_RAG_RERANKING_PROVIDER = "ollama"
+    const val DEFAULT_RAG_CANDIDATE_COUNT = 20
+    const val DEFAULT_RAG_RERANK_MODEL = "qwen2.5"  // Can also use "qwen2.5:latest"
 }
