@@ -69,7 +69,9 @@ class RagQueryService(
      * Pipeline steps:
      * 1. Load index from disk
      * 2. Embed the user's question
-     * 3. Find top-K most similar chunks
+     * 3. Find top-K most similar chunks (or more candidates if re-ranking is enabled)
+     * 3.5. Re-rank candidates with LLM if enabled
+     * 3.6. Filter chunks by threshold (default: 0.7)
      * 4. Format context from retrieved chunks
      * 5. Create augmented prompt
      * 6. Send to LLM for answer generation
@@ -130,8 +132,8 @@ class RagQueryService(
             logger.info("Re-ranking ${candidates.size} candidates with LLM")
             try {
                 val reranked = reranker.rerank(question, candidates)
-                val sorted = reranked.sortedByDescending { it.llmScore }.take(topK)
-                logger.info("Re-ranking complete, selected top-$topK from ${reranked.size} re-ranked chunks")
+                val sorted = reranked.sortedByDescending { it.llmScore }
+                logger.info("Re-ranking complete, got ${sorted.size} re-ranked chunks")
                 sorted
             } catch (e: Exception) {
                 logger.error("Re-ranking failed, falling back to cosine scores", e)
@@ -141,14 +143,27 @@ class RagQueryService(
             null
         }
         
-        val topChunks = if (rerankedChunks != null) {
-            rerankedChunks.map { Pair(it.chunk, it.llmScore) }
+        // Step 3.6: Filter chunks by threshold and select top-K
+        val topChunks: List<Pair<EmbeddedChunk, Float>> = if (rerankedChunks != null) {
+            val filtered = rerankedChunks.filter { it.llmScore >= config.ragFilterThreshold.toFloat() }
+            logger.info("Filtering: ${rerankedChunks.size} chunks → ${filtered.size} chunks (threshold: ${config.ragFilterThreshold})")
+            if (filtered.size < rerankedChunks.size) {
+                val rejected = rerankedChunks.size - filtered.size
+                logger.debug("Rejected $rejected chunks with score < ${config.ragFilterThreshold}")
+            }
+            filtered.take(topK).map { Pair(it.chunk, it.llmScore) }
         } else {
-            candidates.take(topK)
+            val filtered = candidates.filter { it.second >= config.ragFilterThreshold.toFloat() }
+            logger.info("Filtering: ${candidates.size} chunks → ${filtered.size} chunks (threshold: ${config.ragFilterThreshold})")
+            if (filtered.size < candidates.size) {
+                val rejected = candidates.size - filtered.size
+                logger.debug("Rejected $rejected chunks with score < ${config.ragFilterThreshold}")
+            }
+            filtered.take(topK)
         }
         
         if (topChunks.isEmpty()) {
-            logger.warn("No relevant chunks found after re-ranking")
+            logger.warn("No relevant chunks found after filtering")
         } else {
             logger.info("Final selection: ${topChunks.size} chunks")
         }
@@ -199,13 +214,15 @@ class RagQueryService(
         // Step 7: Build result
         val retrievedChunks = if (rerankedChunks != null) {
             // Include both cosine and LLM scores when re-ranking was used
-            rerankedChunks.map { reranked ->
+            // We need to find original cosine scores for the filtered chunks
+            topChunks.map { (chunk, llmScore) ->
+                val originalScore = rerankedChunks.find { it.chunk == chunk }?.originalScore ?: llmScore
                 RetrievedChunk(
-                    source = reranked.chunk.source,
-                    text = reranked.chunk.text,
-                    similarity = reranked.llmScore,
-                    cosineScore = reranked.originalScore,
-                    llmScore = reranked.llmScore
+                    source = chunk.source,
+                    text = chunk.text,
+                    similarity = llmScore,
+                    cosineScore = originalScore,
+                    llmScore = llmScore
                 )
             }
         } else {

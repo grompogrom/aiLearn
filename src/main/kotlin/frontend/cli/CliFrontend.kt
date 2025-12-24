@@ -29,7 +29,7 @@ class CliFrontend(
     private val ragQueryService: RagQueryService? = null
 ) : Frontend {
 
-    private val exitCommands = setOf("exit", "quit")
+    private val exitCommands = setOf("exit", "quit","/exit", "/quit")
     private val clearHistoryCommands = setOf("/clear", "/clearhistory", "clear", "clearhistory")
     private val mcpCommands = setOf("/mcp")
     private val reminderCommands = setOf("/reminder")

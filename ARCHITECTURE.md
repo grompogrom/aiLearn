@@ -79,8 +79,10 @@ src/main/kotlin/
 - **ToolRequestParser**: Parses tool requests from LLM responses in various JSON formats
 - **McpService Interface**: Abstraction for MCP (Model Context Protocol) server interactions
 - **MemoryStore**: Interface for persistent storage of conversation history
-- **JsonMemoryStore**: JSON file-based storage implementation
-- **SqliteMemoryStore**: SQLite database-based storage implementation
+- **JsonMemoryStore**: JSON file-based storage implementation (`ailearn.history.json`)
+- **SqliteMemoryStore**: SQLite database-based storage implementation (`ailearn.history.db`)
+- **MemoryStoreFactory**: Factory for creating memory stores based on configuration
+- **ReminderChecker**: Background service for periodic reminder checking (every 60 seconds)
 
 **Key Design Decisions**:
 - No dependencies on external frameworks (Ktor, etc.)
@@ -98,9 +100,18 @@ src/main/kotlin/
 - **McpClient**: Common interface for all MCP client implementations
 - **McpSseClient**: SSE-based client for communicating with MCP servers
 - **McpStreamableHttpClient**: StreamableHttp-based client for communicating with MCP servers
-- **McpConfig**: Configuration for MCP servers (host, port, baseUrl, transportType, timeout)
+- **McpClientsManager**: Helper class to manage multiple MCP clients as AutoCloseable resource
+- **McpConfig**: Configuration for MCP servers (id, baseUrl, transportType, timeout)
 - **McpTransportType**: Enum for transport types (SSE, STREAMABLE_HTTP)
 - **McpSseResponseParser**: Parses MCP server responses
+- **OllamaClient**: Client for Ollama API (embeddings for RAG)
+- **IndexingService**: RAG document indexing pipeline
+- **RagQueryService**: RAG query processing pipeline
+- **RagStorage**: JSON-based RAG index persistence
+- **SimilaritySearch**: Cosine similarity search implementation
+- **LlmReranker**: Interface for LLM-based re-ranking
+- **OllamaReranker**: Ollama-based re-ranking implementation (uses `qwen2.5` by default)
+- **ProviderReranker**: LLM provider-based re-ranking implementation
 
 **Key Design Decisions**:
 - Each provider has its own models (allowing for API-specific differences)
@@ -155,6 +166,10 @@ src/main/kotlin/
 - `AILEARN_SUMMARIZATION_PROMPT`: Instruction prompt for summarization
 - `AILEARN_MEMORY_STORE_TYPE`: Type of memory store ("json" or "sqlite", default: "json")
 - `AILEARN_MEMORY_STORE_PATH`: Optional path for memory store file/database (default: current directory)
+- `AILEARN_RAG_RERANKING`: Enable RAG re-ranking (true/false, default: false)
+- `AILEARN_RAG_RERANKING_PROVIDER`: Re-ranking provider ("ollama" or "llm", default: "ollama")
+- `AILEARN_RAG_CANDIDATE_COUNT`: Number of retrieval candidates (default: 15)
+- `AILEARN_RAG_RERANK_MODEL`: Model for Ollama re-ranking (default: "qwen2.5")
 
 **MCP Configuration**:
 MCP servers are configured in code via `McpConfig.kt`. Each server can be configured with:
@@ -190,6 +205,10 @@ summarization.system.prompt=You are a helpful assistant that summarizes conversa
 summarization.prompt=Please provide a brief summary of the conversation so far, capturing the key topics, questions, and answers discussed. Keep it concise and focused on the main points.
 memory.store.type=json
 memory.store.path=ailearn.history.json
+rag.reranking=false
+rag.reranking.provider=ollama
+rag.candidate.count=15
+rag.rerank.model=qwen2.5
 ```
 
 ## SOLID Principles
@@ -201,9 +220,18 @@ memory.store.path=ailearn.history.json
 - `TokenCostCalculator` calculates costs
 - `ToolCallingHandler` manages the tool calling loop
 - `ToolRequestParser` parses tool requests from LLM responses
-- `McpSseClient` handles MCP server communication
+- `McpSseClient` handles MCP SSE server communication
+- `McpStreamableHttpClient` handles MCP StreamableHttp server communication
+- `McpServiceImpl` coordinates multiple MCP servers
+- `McpClientsManager` manages MCP client lifecycle
 - `PerplexityProvider` handles Perplexity API communication
 - `CliFrontend` handles CLI interaction
+- `ReminderChecker` handles periodic reminder checking
+- `OllamaClient` handles Ollama API communication
+- `IndexingService` handles RAG document indexing
+- `RagQueryService` handles RAG query processing
+- `OllamaReranker` handles Ollama-based re-ranking
+- `ProviderReranker` handles LLM-based re-ranking
 
 ### Open/Closed Principle (OCP)
 - Open for extension (new providers, new frontends) without modification
@@ -420,32 +448,69 @@ When a tool is requested:
 
 ## Testing Strategy
 
-The architecture supports easy testing:
+The architecture supports comprehensive testing with actual test implementations:
 
-- **Unit Tests**: Test business logic (ConversationManager, TokenCostCalculator) with mocked providers
-- **Integration Tests**: Test provider implementations with test API keys
-- **E2E Tests**: Test full flow with mocked or real providers
+### Implemented Tests
 
-## Migration from Old Architecture
+**Core Tests:**
+- `ConfigLoaderTest.kt` - Configuration loading and priority order
+- `TokenCostCalculatorTest.kt` - Cost calculation accuracy
+- `MessageTest.kt` - Domain model validation
 
-The old files (`ApiClient.kt`, `Config.kt`, old `Main.kt`) are preserved for reference but are no longer used. The new architecture:
+**Conversation Tests:**
+- `ConversationManagerSummarizationTest.kt` - Summarization trigger logic
+- `ConversationSummarizerTest.kt` - Summary generation
+- `ToolRequestParserTest.kt` - Tool request parsing from various formats
 
-- Preserves all existing functionality
-- Maintains backward compatibility with configuration
-- Improves testability and extensibility
-- Follows clean architecture principles
+**Memory Tests:**
+- `JsonMemoryStoreTest.kt` - JSON persistence operations
+- `SqliteMemoryStoreTest.kt` - SQLite persistence operations
+- `MemoryStoreFactoryTest.kt` - Factory creation logic
 
-## Benefits of New Architecture
+**MCP Tests:**
+- `McpSseClientTest.kt` - SSE client functionality
+- `McpSseResponseParserTest.kt` - Response parsing
 
-1. **Modularity**: Clear separation of concerns
-2. **Testability**: Easy to mock dependencies
-3. **Extensibility**: Easy to add new providers and frontends
-4. **Maintainability**: Small, focused classes
-5. **Flexibility**: Configuration from multiple sources
-6. **Scalability**: Architecture supports growth
+### Test Infrastructure
+- **Kotlin Test** - Testing framework
+- **MockK** - Mocking framework for Kotlin
+- **Ktor Client Mock** - HTTP client mocking for API tests
+- **Test Location**: `src/test/kotlin/`
+
+## CLI Commands
+
+The application provides several built-in commands:
+
+### Conversation Management
+- `exit` or `quit` - Exit the application
+- `/clear` or `/clearhistory` - Clear conversation history
+
+### MCP Tools
+- `/mcp` - List available MCP tools from all configured servers
+
+### Reminder System
+- `/reminder` - Toggle automated reminder checking on/off (checks every 60 seconds)
+
+### RAG System
+- `/index` - Build RAG index from documents in `dataForRag/raw/`
+- `/ask <question>` - Query the RAG knowledge base
+- `/rag <question>` - Alternative command for RAG queries
+
+## Key Architecture Benefits
+
+1. **Modularity**: Clear separation of concerns across Core, API, and Frontend layers
+2. **Testability**: Easy to mock dependencies with comprehensive test coverage
+3. **Extensibility**: Easy to add new providers, frontends, memory stores, and re-rankers
+4. **Maintainability**: Small, focused classes following SOLID principles
+5. **Flexibility**: Configuration from multiple sources (env vars, config file, BuildConfig)
+6. **Scalability**: Architecture supports growth without major refactoring
 7. **Tool Calling**: Custom tool calling layer enables MCP integration with any LLM provider
-8. **MCP Integration**: Standardized protocol for tool and data access
-9. **RAG System**: Integrated retrieval-augmented generation with semantic search and LLM re-ranking
+8. **MCP Integration**: Standardized protocol for tool and data access with mixed transport support
+9. **RAG System**: Integrated retrieval-augmented generation with semantic search and optional LLM re-ranking
+10. **Persistence**: Dual memory store options (JSON and SQLite) for conversation history
+11. **Background Tasks**: Support for non-blocking background operations (reminder checking, history saving)
+12. **Logging**: Structured logging with rolling file appender, separate from user-facing output
+13. **Error Handling**: Typed error hierarchies (sealed classes) for type-safe error handling
 
 ## Related Documentation
 

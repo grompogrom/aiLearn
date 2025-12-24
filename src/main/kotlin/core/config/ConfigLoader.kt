@@ -149,6 +149,10 @@ private class EnvironmentConfig : AppConfig {
     
     override val ragRerankModel: String
         get() = System.getenv("AILEARN_RAG_RERANK_MODEL") ?: DefaultConfig.DEFAULT_RAG_RERANK_MODEL
+    
+    override val ragFilterThreshold: Double
+        get() = System.getenv("AILEARN_RAG_FILTER_THRESHOLD")?.toDoubleOrNull()
+            ?: DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
 }
 
 /**
@@ -214,6 +218,7 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val ragRerankingProvider: String get() = getString("rag.reranking.provider", DefaultConfig.DEFAULT_RAG_RERANKING_PROVIDER)
     override val ragCandidateCount: Int get() = getInt("rag.candidate.count", DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT)
     override val ragRerankModel: String get() = getString("rag.rerank.model", DefaultConfig.DEFAULT_RAG_RERANK_MODEL)
+    override val ragFilterThreshold: Double get() = getDouble("rag.filter.threshold", DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD)
 }
 
 /**
@@ -284,6 +289,7 @@ private class BuildConfigWrapper : AppConfig {
     override val ragRerankingProvider: String = DefaultConfig.DEFAULT_RAG_RERANKING_PROVIDER
     override val ragCandidateCount: Int = DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT
     override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
+    override val ragFilterThreshold: Double = DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
 }
 
 /**
@@ -322,6 +328,7 @@ private class DefaultAppConfig : AppConfig {
     override val ragRerankingProvider: String = DefaultConfig.DEFAULT_RAG_RERANKING_PROVIDER
     override val ragCandidateCount: Int = DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT
     override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
+    override val ragFilterThreshold: Double = DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
 }
 
 /**
@@ -363,4 +370,5 @@ private class CompositeConfig(
     override val ragRerankingProvider: String get() = primary.ragRerankingProvider.ifEmpty { fallback.ragRerankingProvider }
     override val ragCandidateCount: Int get() = if (primary.ragCandidateCount > 0) primary.ragCandidateCount else fallback.ragCandidateCount
     override val ragRerankModel: String get() = primary.ragRerankModel.ifEmpty { fallback.ragRerankModel }
+    override val ragFilterThreshold: Double get() = if (primary.ragFilterThreshold > 0) primary.ragFilterThreshold else fallback.ragFilterThreshold
 }

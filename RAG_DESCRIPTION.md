@@ -7,6 +7,7 @@
 - [Architecture](#architecture)
 - [Implementation Details](#implementation-details)
 - [LLM Re-ranking](#llm-re-ranking)
+- [Score Filtering](#score-filtering)
 - [Configuration](#configuration)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
@@ -20,6 +21,7 @@ The aiLearn RAG (Retrieval-Augmented Generation) system enables context-aware AI
 - **Document Indexing**: Automatically indexes markdown files from `dataForRag/raw/`
 - **Semantic Search**: Uses vector embeddings for semantic similarity matching
 - **LLM Re-ranking**: Optional two-stage retrieval for improved relevance
+- **Score Filtering**: Automatic filtering of low-relevance chunks (threshold: 0.7)
 - **Context-Aware Answers**: LLM generates answers based on retrieved context
 - **Source Attribution**: Shows which documents were used with relevance scores
 
@@ -107,14 +109,14 @@ Raw .md Files → Document Chunker → Ollama Embeddings → JSON Index
 
 #### Query Pipeline (without re-ranking)
 ```
-User Question → Embed Question → Cosine Similarity → Top-K Chunks → Format Context → LLM → Answer
-                  (Ollama)        (Fast, 1ms)         (e.g., 3)        (with sources)
+User Question → Embed Question → Cosine Similarity → Filter (≥0.7) → Top-K Chunks → Format Context → LLM → Answer
+                  (Ollama)        (Fast, 1ms)         (threshold)     (e.g., 3)        (with sources)
 ```
 
 #### Query Pipeline (with re-ranking)
 ```
-User Question → Embed Question → Cosine Similarity → Top-20 Candidates → LLM Re-rank → Top-K → Answer
-                  (Ollama)        (Fast, 1ms)         (20 chunks)       (2-5s)      (e.g., 3)
+User Question → Embed Question → Cosine Similarity → Top-20 Candidates → LLM Re-rank → Filter (≥0.7) → Top-K → Answer
+                  (Ollama)        (Fast, 1ms)         (20 chunks)       (2-5s)      (threshold)  (e.g., 3)
 ```
 
 ### Index Structure
@@ -323,6 +325,78 @@ export AILEARN_RAG_CANDIDATE_COUNT=20
 export AILEARN_RAG_RERANK_MODEL=qwen2.5:7b
 ```
 
+## Score Filtering
+
+### Overview
+
+After the retrieval and re-ranking stages, the RAG system automatically filters out chunks with low relevance scores. This ensures that only high-quality, relevant information is used to generate the final answer.
+
+### How It Works
+
+1. **After Retrieval**: Chunks are retrieved using cosine similarity (or re-ranked with LLM)
+2. **Filtering Stage**: Chunks with scores below the threshold are rejected
+3. **Final Selection**: Only chunks meeting the threshold are used for the answer
+
+### Default Threshold
+
+- **Default Value**: `0.7` (on a scale of 0.0 to 1.0)
+- **Meaning**: Only chunks with 70% or higher relevance are kept
+- **Applies To**: Both cosine similarity scores and LLM re-ranking scores
+
+### Configuration
+
+**Change the threshold**:
+```bash
+# Stricter filtering (only highly relevant chunks)
+export AILEARN_RAG_FILTER_THRESHOLD=0.8
+
+# More lenient filtering (allow more chunks)
+export AILEARN_RAG_FILTER_THRESHOLD=0.6
+
+# Disable filtering (use all retrieved chunks)
+export AILEARN_RAG_FILTER_THRESHOLD=0.0
+```
+
+### Example Output
+
+```
+🔍 RAG Query: "What is the purpose of this project?"
+📊 Found 15 candidates
+🧠 Re-ranking complete, got 15 re-ranked chunks
+🔍 Filtering: 15 chunks → 8 chunks (threshold: 0.7)
+   Rejected 7 chunks with score < 0.7
+📝 Final selection: 3 chunks
+
+📚 Найдено релевантных фрагментов: 3
+  1. [PROJECT_DESCRIPTION.md] LLM: 0.94 (Cosine: 0.87)
+  2. [README.md] LLM: 0.89 (Cosine: 0.82)
+  3. [ARCHITECTURE.md] LLM: 0.85 (Cosine: 0.78)
+```
+
+### Benefits
+
+- **Quality Control**: Prevents low-quality chunks from polluting the context
+- **Better Answers**: LLM receives only relevant information
+- **Automatic**: No manual intervention required
+- **Configurable**: Adjust threshold based on your needs
+
+### When to Adjust
+
+**Increase threshold (0.8-0.9)** when:
+- You want only the most relevant information
+- Your knowledge base is large and comprehensive
+- Answer quality is more important than completeness
+
+**Decrease threshold (0.5-0.6)** when:
+- You're getting "no relevant context found" errors
+- Your knowledge base is small or sparse
+- You want more comprehensive answers
+
+**Disable filtering (0.0)** when:
+- Debugging retrieval issues
+- Testing different chunking strategies
+- You want to see all retrieved chunks
+
 ## Configuration
 
 ### Environment Variables
@@ -333,6 +407,7 @@ export AILEARN_RAG_RERANK_MODEL=qwen2.5:7b
 | `AILEARN_RAG_RERANKING_PROVIDER` | `ollama` | Re-ranking provider (`ollama` or `llm`) |
 | `AILEARN_RAG_CANDIDATE_COUNT` | `20` | Number of candidates for re-ranking |
 | `AILEARN_RAG_RERANK_MODEL` | `qwen2.5` | Ollama model for re-ranking |
+| `AILEARN_RAG_FILTER_THRESHOLD` | `0.7` | Minimum score threshold for filtering chunks (0.0-1.0) |
 
 ### Properties File
 
@@ -343,6 +418,7 @@ rag.reranking=true
 rag.reranking.provider=ollama
 rag.candidate.count=20
 rag.rerank.model=qwen2.5
+rag.filter.threshold=0.7
 ```
 
 ### Default Settings

@@ -2,18 +2,21 @@
 
 ## Overview
 
-**aiLearn** is a Kotlin-based terminal application that provides an interactive chat interface with Perplexity AI API. The application enables users to have conversational interactions with an AI assistant, with support for message history management, token usage tracking, configurable dialog behavior, and **MCP (Model Context Protocol) tool calling integration**.
+**aiLearn** is a Kotlin-based terminal application that provides an interactive chat interface with multiple LLM providers (Perplexity AI by default). The application enables users to have conversational interactions with an AI assistant, with support for message history management, token usage tracking, configurable dialog behavior, **MCP (Model Context Protocol) tool calling integration**, **RAG (Retrieval-Augmented Generation) system**, and **automated reminder checking**.
 
 ## Project Purpose
 
 The application serves as a learning tool and interactive AI assistant that:
-- Maintains conversation context through message history
+- Maintains conversation context through message history with persistent storage (JSON/SQLite)
 - Tracks token usage and calculates API costs
 - Supports both stateful (with history) and stateless (independent) requests
 - Provides a clean terminal-based user interface
 - Handles API errors gracefully with detailed error reporting
 - **Integrates with MCP servers for tool calling functionality**
 - **Automatically executes tools requested by the LLM and returns results**
+- **Provides RAG capabilities for knowledge base indexing and querying**
+- **Supports automated reminder checking via background tasks**
+- **Automatically summarizes conversation history when token threshold is exceeded**
 
 ## Technology Stack
 
@@ -22,10 +25,12 @@ The application serves as a learning tool and interactive AI assistant that:
 - **HTTP Client**: Ktor 3.3.2 (CIO engine)
 - **Serialization**: Kotlinx Serialization (JSON)
 - **Concurrency**: Kotlin Coroutines
-- **Logging**: SLF4J Simple
+- **Logging**: Logback (SLF4J) with file-based rolling logs
+- **Database**: SQLite 3.44.1.0 (optional, for conversation persistence)
 - **Java Version**: JVM 21
-- **API**: Perplexity AI Chat Completions API
+- **API**: Perplexity AI Chat Completions API (default provider)
 - **MCP SDK**: Model Context Protocol Kotlin SDK 0.8.1
+- **Embeddings**: Ollama (for RAG system)
 
 ## Project Structure
 
@@ -64,75 +69,102 @@ src/main/kotlin/
 ## Core Components
 
 ### Main.kt
-- **Responsibility**: Application entry point and CLI interaction loop
+- **Responsibility**: Application entry point and dependency initialization
 - **Key Features**:
-  - Interactive terminal loop with user input handling
-  - Exit command detection (`exit`, `quit`)
-  - Token usage display with cost calculation
-  - Dialog end marker detection (`###END###`)
-  - Error handling with user-friendly messages
-- **Configuration**: `USE_MESSAGE_HISTORY` flag controls history behavior
+  - Configuration loading via `ConfigLoader`
+  - API key validation
+  - MCP client initialization (supports multiple servers with mixed transport types)
+  - Ollama client creation for RAG
+  - RAG services initialization (IndexingService, RagQueryService, LlmReranker)
+  - Memory store creation (JSON or SQLite based on configuration)
+  - Conversation manager initialization with history loading
+  - Reminder checker creation (disabled by default)
+  - CLI frontend initialization and startup
+  - Proper resource management with `use {}` blocks
+  - Comprehensive logging throughout initialization
+- **Architecture**: Follows dependency injection pattern, creating all components and wiring them together
 
-### ApiClient.kt
-- **Responsibility**: HTTP client wrapper and conversation state management
+### ConversationManager
+- **Responsibility**: Core business logic for conversation management
 - **Key Features**:
-  - Message history management (optional, configurable)
+  - Message history management with persistent storage
+  - Automatic conversation summarization when token threshold exceeded
+  - Tool calling integration (when MCP service available)
   - Two request modes:
-    - `sendRequest()`: Uses message history if enabled
-    - `sendIndependentRequest()`: Always sends fresh request without history
-  - Automatic history updates after successful requests
-  - HTTP timeout configuration (60 seconds)
-  - JSON serialization/deserialization
-  - Error response handling
-- **Implements**: `AutoCloseable` for resource management
-- **Dependencies**: Ktor HttpClient, Config
+    - `sendRequest()`: Uses message history and tool calling
+    - `sendRequestWithoutHistory()`: For background tasks (e.g., reminder checking)
+  - Asynchronous history saving (non-blocking)
+  - Summarization callbacks for user notification
+- **Dependencies**: LlmProvider, AppConfig, MemoryStore, McpService
 
-### Config.kt
-- **Responsibility**: Centralized configuration management
-- **Key Constants**:
-  - `API_URL`: Perplexity API endpoint
-  - `API_KEY`: Retrieved from BuildConfig (gradle.properties)
-  - `MODEL`: AI model name ("sonar")
-  - `MAX_TOKENS`: Maximum tokens per request (500)
-  - `TEMPERATURE`: AI temperature setting (0.6)
-  - `SYSTEM_PROMPT`: System message for AI behavior
-  - `DIALOG_END_MARKER`: Marker string for dialog termination
-  - `PRICE_MILLION_TOKENS`: Cost calculation constant
-- **Build Integration**: Uses BuildConfig plugin to inject API key from gradle.properties
+### Configuration System
+- **Responsibility**: Flexible, multi-source configuration management
+- **Components**:
+  - `AppConfig`: Interface defining all configuration properties
+  - `ConfigLoader`: Loads and merges configuration from multiple sources
+  - `CompositeConfig`: Implements fallback chain (env vars → config file → BuildConfig → defaults)
+  - `DefaultConfig`: Object with all default values
+- **Configuration Sources** (priority order):
+  1. Environment variables (highest priority)
+  2. Config file (`ailearn.config.properties`)
+  3. BuildConfig (gradle.properties, build-time injection)
+  4. Default values (lowest priority)
+- **Key Configuration Areas**:
+  - API settings (key, URL, model, tokens, temperature)
+  - History and summarization settings
+  - Memory store configuration (type, path)
+  - MCP settings (timeout)
+  - RAG settings (re-ranking, candidate count, model)
 
-### Models
+### Domain Models
 
-#### ChatRequest.kt
-- `Message`: Represents a single message with role, content, and disable_search flag
-  - Factory method: `Message.create(MessageRole, String, Boolean)`
+#### Core Domain (`core/domain/`)
+- `Message`: Represents a single message with role and content
+  - Factory method: `Message.create(MessageRole, String)`
+- `MessageRole`: Enum (SYSTEM, USER, ASSISTANT) for type-safe role management
 - `ChatRequest`: API request payload with model, messages list, max_tokens, temperature
+- `ChatResponse`: Complete API response with content and token usage
+- `TokenUsage`: Token usage statistics (prompt_tokens, completion_tokens, total_tokens)
 
-#### ChatResponse.kt
-- `Usage`: Token usage statistics (prompt_tokens, completion_tokens, total_tokens, etc.)
-- `ChoiceMessage`: Message content and role from API response
-- `Choice`: Response choice with index, finish_reason, and message
-- `ChatResponse`: Complete API response with id, model, usage, choices, search_results, videos
-- `SearchResult`: Search result metadata (title, url, date)
-- `Video`: Video metadata (url, thumbnails, duration)
+#### MCP Domain (`core/mcp/`)
+- `McpToolInfo`: Represents an MCP tool (name, description, inputSchema)
+- `McpError`: Sealed class hierarchy for typed MCP errors:
+  - `NotConfigured`: MCP not configured
+  - `ConnectionFailed`: Network/connection failure
+  - `ServerError`: MCP server returned error
+  - `InvalidResponse`: Response parsing failure
+  - `Timeout`: Request timeout
+- `McpResult<T>`: Result wrapper (Success or Error) for MCP operations
+- `McpService`: Interface for MCP server interactions
 
-#### ApiResponse.kt
-- Internal wrapper combining content string and Usage object
-- Used to pass both response content and token usage information
+#### RAG Domain (`core/rag/`)
+- `RawDocument`: Unprocessed document (path, content)
+- `DocumentChunk`: Text chunk with metadata (text, source, chunkIndex)
+- `EmbeddedChunk`: Chunk with embedding vector
+- `RagIndex`: Complete index (chunks, metadata)
+- `RagQueryResult`: Query result (answer, retrieved chunks)
+- `RetrievedChunk`: Chunk with relevance scores (text, source, similarity, cosineScore, llmScore)
+- `RerankedChunk`: Chunk with both cosine and LLM scores
 
-#### MessageRole.kt
-- Enum with values: SYSTEM, USER, ASSISTANT
-- Provides type-safe role management
+### Tool Calling Components
 
-### ApiException.kt
-- **Sealed class hierarchy** for typed error handling:
-  - `InvalidJsonResponse`: JSON parsing failures with retry information
-  - `EmptyResponse`: Responses without content
-  - `RequestFailed`: General request failures
-- **Purpose**: Type-safe error handling with detailed error messages
+#### ToolCallingHandler
+- **Responsibility**: Manages iterative tool calling loop
+- **Key Features**:
+  - Enhances system prompt with tool descriptions
+  - Iterative execution (max 10 iterations)
+  - Tool result formatting for LLM consumption
+  - Smart routing via McpService
+- **Flow**: User message → LLM → Tool requests → Tool execution → LLM → Final answer
 
-### StringExtensions.kt
-- `String.cleanJsonContent()`: Removes JSON code block markers
-- `Int.getRetryWord()`: Russian pluralization for retry count
+#### ToolRequestParser
+- **Responsibility**: Parses tool requests from LLM responses
+- **Supported Formats**:
+  - Single object: `{"tool": "name", "arguments": {...}}`
+  - Array: `[{"tool": "name", "arguments": {...}}]`
+  - Markdown code blocks with JSON
+  - Inline patterns: `CALL_TOOL: name({...})`
+- **Output**: List of `ToolRequest` objects (toolName, arguments)
 
 ## Architecture Patterns
 
@@ -188,15 +220,76 @@ src/main/kotlin/
 
 ## Configuration Management
 
+### Configuration Sources (Priority Order)
+1. **Environment Variables** (highest priority)
+2. **Config File** (`ailearn.config.properties`)
+3. **BuildConfig** (gradle.properties, build-time injection)
+4. **Default Values** (lowest priority)
+
+### Key Environment Variables
+
+**API Configuration:**
+- `AILEARN_API_KEY` - API key for LLM provider
+- `AILEARN_API_URL` - API endpoint URL
+- `AILEARN_MODEL` - Model name (default: "sonar")
+- `AILEARN_MAX_TOKENS` - Maximum tokens per request (default: 5000)
+- `AILEARN_TEMPERATURE` - Temperature setting (default: 0.3)
+- `AILEARN_SYSTEM_PROMPT` - System prompt
+- `AILEARN_REQUEST_TIMEOUT_MILLIS` - Request timeout (default: 60000)
+
+**History & Summarization:**
+- `AILEARN_USE_MESSAGE_HISTORY` - Enable message history (default: true)
+- `AILEARN_ENABLE_SUMMARIZATION` - Enable auto-summarization (default: true)
+- `AILEARN_SUMMARIZATION_TOKEN_THRESHOLD` - Token threshold for summarization (default: 4000)
+- `AILEARN_SUMMARIZATION_MODEL` - Model for summarization (default: "sonar")
+- `AILEARN_SUMMARIZATION_MAX_TOKENS` - Max tokens for summary (default: 500)
+- `AILEARN_SUMMARIZATION_TEMPERATURE` - Temperature for summarization (default: 0.3)
+- `AILEARN_SUMMARIZATION_SYSTEM_PROMPT` - System prompt for summarization
+- `AILEARN_SUMMARIZATION_PROMPT` - Instruction prompt for summarization
+
+**Memory Store:**
+- `AILEARN_MEMORY_STORE_TYPE` - Store type: "json" or "sqlite" (default: "json")
+- `AILEARN_MEMORY_STORE_PATH` - Optional custom path for store file/database
+
+**MCP Configuration:**
+- `AILEARN_MCP_REQUEST_TIMEOUT_MILLIS` - MCP request timeout (default: 15000)
+- Note: MCP servers are configured in code via `McpConfig.kt`
+
+**RAG Configuration:**
+- `AILEARN_RAG_RERANKING` - Enable re-ranking (default: false)
+- `AILEARN_RAG_RERANKING_PROVIDER` - Re-ranking provider: "ollama" or "llm" (default: "ollama")
+- `AILEARN_RAG_CANDIDATE_COUNT` - Retrieval candidate count (default: 15)
+- `AILEARN_RAG_RERANK_MODEL` - Model for Ollama re-ranking (default: "qwen2.5")
+
+### Config File Format
+Create `ailearn.config.properties` in project root:
+```properties
+api.key=your_api_key
+api.url=https://api.perplexity.ai/chat/completions
+model=sonar
+max.tokens=5000
+temperature=0.3
+use.message.history=true
+enable.summarization=true
+summarization.token.threshold=4000
+memory.store.type=json
+memory.store.path=ailearn.history.json
+rag.reranking=false
+rag.reranking.provider=ollama
+rag.candidate.count=15
+rag.rerank.model=qwen2.5
+```
+
 ### Build-time Configuration
-- API key stored in `gradle.properties` (excluded from git)
+- API key can be stored in `gradle.properties` (excluded from git)
 - Injected via BuildConfig plugin during build
 - Property name: `perplexityApiKey`
 
-### Runtime Configuration
-- All runtime constants in `Config.kt` object
-- System prompt configurable for different use cases
-- Temperature, max_tokens, model can be adjusted per request
+### Configuration Architecture
+- `AppConfig` - Interface for configuration values
+- `ConfigLoader` - Loads and merges configuration from all sources
+- `CompositeConfig` - Implements fallback chain (primary → fallback)
+- `DefaultConfig` - Object with all default constants
 
 ## Code Style & Conventions
 
@@ -223,37 +316,65 @@ src/main/kotlin/
 ## Dependencies
 
 ### Runtime
-- `io.ktor:ktor-client-core:3.3.2`
-- `io.ktor:ktor-client-cio:3.3.2`
-- `io.ktor:ktor-client-content-negotiation:3.3.2`
-- `io.ktor:ktor-serialization-kotlinx-json:3.3.2`
-- `io.ktor:ktor-client-sse:3.3.2` - SSE support for MCP (required for both SSE and StreamableHttp transports)
+- `io.ktor:ktor-client-core:3.3.2` - HTTP client core
+- `io.ktor:ktor-client-cio:3.3.2` - CIO engine for async I/O
+- `io.ktor:ktor-client-content-negotiation:3.3.2` - Content negotiation
+- `io.ktor:ktor-serialization-kotlinx-json:3.3.2` - JSON serialization
 - `io.modelcontextprotocol:kotlin-sdk-client:0.8.1` - MCP SDK (supports both SSE and StreamableHttp transports)
-- `org.slf4j:slf4j-simple:2.0.13`
+- `org.slf4j:slf4j-api:2.0.13` - Logging facade
+- `ch.qos.logback:logback-classic:1.5.8` - Logging implementation with rolling file appender
+- `org.xerial:sqlite-jdbc:3.44.1.0` - SQLite database for conversation persistence
+
+### Test
+- `kotlin-test` - Kotlin testing framework
+- `io.ktor:ktor-client-mock:3.3.2` - HTTP client mocking
+- `io.mockk:mockk:1.13.10` - Mocking framework for Kotlin
 
 ### Build
-- `com.github.gmazzo.buildconfig:5.5.1` (BuildConfig plugin)
+- `com.github.gmazzo.buildconfig:5.5.1` - BuildConfig plugin for build-time value injection
 
 ## Current Features
 
+### Core Features
 1. ✅ Interactive terminal CLI
 2. ✅ Message history management (optional)
 3. ✅ Independent request mode (no history)
 4. ✅ Token usage tracking and cost calculation
 5. ✅ Dialog end marker detection
-6. ✅ Error handling with detailed messages
+6. ✅ Error handling with detailed messages and typed error hierarchy
 7. ✅ HTTP timeout configuration
 8. ✅ JSON serialization/deserialization
 9. ✅ System prompt configuration
 10. ✅ Temperature and max_tokens per-request configuration
-11. ✅ **MCP (Model Context Protocol) integration**
-12. ✅ **Automatic tool calling with iterative execution loop**
-13. ✅ **Tool request parsing from LLM responses**
-14. ✅ **Multiple MCP server support with mixed transport types**
-15. ✅ **SSE and StreamableHttp transport support**
-16. ✅ **Smart tool routing (tools called in correct server)**
-17. ✅ **Persistent conversation history (JSON/SQLite)**
-18. ✅ **Automatic conversation summarization**
+11. ✅ Flexible configuration (environment variables, config file, BuildConfig)
+
+### Tool Calling & MCP
+12. ✅ **MCP (Model Context Protocol) integration**
+13. ✅ **Automatic tool calling with iterative execution loop**
+14. ✅ **Tool request parsing from LLM responses (multiple formats)**
+15. ✅ **Multiple MCP server support with mixed transport types**
+16. ✅ **SSE and StreamableHttp transport support**
+17. ✅ **Smart tool routing (tools called in correct server)**
+18. ✅ **McpClientsManager for lifecycle management**
+
+### Memory & Summarization
+19. ✅ **Persistent conversation history (JSON/SQLite)**
+20. ✅ **Automatic conversation summarization when token threshold exceeded**
+21. ✅ **Configurable summarization (threshold, model, prompts)**
+22. ✅ **Background asynchronous history saving**
+
+### RAG System
+23. ✅ **Document indexing with semantic embeddings (Ollama)**
+24. ✅ **Cosine similarity search for chunk retrieval**
+25. ✅ **Optional LLM re-ranking (Ollama or LLM provider)**
+26. ✅ **Two re-ranking implementations: OllamaReranker and ProviderReranker**
+27. ✅ **Source attribution with relevance scores**
+28. ✅ **CLI commands: /index and /ask**
+
+### Advanced Features
+29. ✅ **Automated reminder checking (background coroutine, toggle via /reminder)**
+30. ✅ **Structured logging with Logback (file-based with rolling policy)**
+31. ✅ **Comprehensive test coverage (unit, integration)**
 
 ## Design Decisions
 
@@ -331,92 +452,205 @@ val servers: List<McpServerConfig> = listOf(
 - Tools from all servers are automatically aggregated
 - Tool calls are routed to the server that has the requested tool
 - If a tool exists in multiple servers, they are tried in order until one succeeds
+- `McpClientsManager` handles lifecycle management of all MCP clients
+- Smart error handling: if some servers fail, others continue to work
+
+## Reminder System
+
+The application includes an automated reminder checking system that runs in the background.
+
+**Key Features:**
+- Periodic reminder checking (every 60 seconds) via MCP tool (`reminder.list`)
+- Background coroutine execution (non-blocking)
+- Results processed by LLM and displayed to user
+- Does not save reminder checks to conversation history
+- Toggle on/off via `/reminder` command (disabled by default)
+
+**Components:**
+- `ReminderChecker` - Background service for periodic reminder checking
+- Configurable output callback for displaying results
+- Uses `ConversationManager.sendRequestWithoutHistory()` to avoid polluting conversation history
+
+**CLI Command:**
+```bash
+# Toggle reminder checking on/off
+/reminder
+```
+
+## Logging System
+
+The application uses **Logback** for structured logging with file-based output (no console logging to avoid interfering with CLI interaction).
+
+**Configuration:**
+- Log file: `ailearn.log` in current directory
+- Rolling policy: Size-based (100MB per file) and time-based (daily)
+- Retention: 30 days, max 1GB total
+- Format: `%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n`
+- Log levels:
+  - Application code: DEBUG
+  - External libraries (Ktor, MCP SDK): WARN
+- Configuration file: `src/main/resources/logback.xml`
 
 ## RAG System
 
 The application includes a comprehensive RAG (Retrieval-Augmented Generation) system that enables context-aware AI responses by indexing and searching through your knowledge base.
 
 **Key Features:**
-- Document indexing with semantic embeddings (via Ollama)
+- Document indexing with semantic embeddings (via Ollama `mxbai-embed-large` model)
 - Cosine similarity search for relevant chunks
-- Optional LLM re-ranking for improved relevance
+- Optional LLM re-ranking for improved relevance (two implementations: OllamaReranker and ProviderReranker)
 - Source attribution with relevance scores
-- Support for multiple file types
+- Support for multiple file types (Markdown, text)
+- Configurable chunk size and overlap
+- Progress callbacks during indexing
 
-**Quick Start:**
+**Components:**
+- `OllamaClient` - Embedding generation via Ollama API
+- `DocumentChunker` - Text splitting with configurable overlap
+- `IndexingService` - Pipeline orchestration for indexing
+- `RagStorage` - JSON-based index persistence
+- `SimilaritySearch` - Cosine similarity for retrieval
+- `RagQueryService` - Query pipeline orchestration
+- `LlmReranker` - Interface with two implementations:
+  - `OllamaReranker` - Uses Ollama (default: `qwen2.5` model) for cost-effective local re-ranking
+  - `ProviderReranker` - Uses LLM provider (e.g., Perplexity) for higher-quality re-ranking
+
+**Configuration (Environment Variables):**
+- `AILEARN_RAG_RERANKING` - Enable/disable re-ranking (default: false)
+- `AILEARN_RAG_RERANKING_PROVIDER` - Re-ranking provider: "ollama" or "llm" (default: "ollama")
+- `AILEARN_RAG_CANDIDATE_COUNT` - Number of candidates to retrieve (default: 15)
+- `AILEARN_RAG_RERANK_MODEL` - Model for Ollama re-ranking (default: "qwen2.5")
+
+**CLI Commands:**
 ```bash
-# Build index
+# Build index from documents in dataForRag/raw/
 /index
 
 # Query knowledge base
 /ask What is RAG?
+# or
+/rag What is RAG?
 ```
 
 For complete RAG documentation, see [RAG_DESCRIPTION.md](RAG_DESCRIPTION.md).
 
+## CLI Commands Reference
+
+The application provides several built-in commands for different functionalities:
+
+### Conversation Management
+- **`exit`** or **`quit`** - Exit the application gracefully
+- **`/clear`** or **`/clearhistory`** - Clear conversation history and reset to system prompt
+
+### MCP Tools
+- **`/mcp`** - List all available MCP tools from configured servers
+  - Shows tool names, descriptions, and input schemas
+  - Displays tools from all configured servers (both SSE and StreamableHttp)
+
+### Reminder System
+- **`/reminder`** - Toggle automated reminder checking on/off
+  - When enabled: checks reminders every 60 seconds via `reminder.list` MCP tool
+  - Results are processed by LLM and displayed
+  - Does not save to conversation history
+  - Disabled by default
+
+### RAG System
+- **`/index`** - Build RAG index from documents in `dataForRag/raw/`
+  - Processes all Markdown files in the directory
+  - Generates embeddings using Ollama (`mxbai-embed-large` model)
+  - Saves index to `dataForRag/indexed/index.json`
+  - Shows progress during indexing
+
+- **`/ask <question>`** or **`/rag <question>`** - Query the RAG knowledge base
+  - Retrieves relevant chunks using cosine similarity
+  - Optionally re-ranks results using LLM (if enabled)
+  - Generates answer using LLM with retrieved context
+  - Displays source attribution and relevance scores
+
 ## Potential Improvements & Extension Points
 
 ### Features
+- [x] ~~Logging framework integration~~ (Implemented: Logback with rolling file appender)
+- [x] ~~Unit tests~~ (Implemented: Comprehensive test coverage)
+- [x] ~~Integration tests~~ (Implemented: Memory stores, MCP, configuration)
+- [x] ~~Configuration file support~~ (Implemented: Properties file + env vars + BuildConfig)
 - [ ] Retry logic with exponential backoff
 - [ ] Request rate limiting
 - [ ] Response streaming support
-- [ ] Multiple model support with model selection
-- [ ] Conversation export/import
-- [ ] Configuration file support (YAML/JSON)
-- [ ] Logging framework integration
-- [ ] Unit tests
-- [ ] Integration tests
-- [ ] Command-line argument parsing
+- [ ] Multiple model support with model selection UI
+- [ ] Conversation export/import (to/from different formats)
+- [ ] Command-line argument parsing (for batch mode)
 - [ ] Interactive mode vs batch mode
-- [ ] Response formatting (markdown, HTML)
-- [ ] Search results display
-- [ ] Video results display
-- [ ] MCP server discovery
-- [ ] Tool result caching
+- [ ] Response formatting (markdown rendering, HTML export)
+- [ ] Search results display (from Perplexity API)
+- [ ] Video results display (from Perplexity API)
+- [ ] MCP server discovery (automatic detection)
+- [ ] Tool result caching (to avoid redundant calls)
+- [ ] GUI frontend implementation
+- [ ] HTTP API frontend implementation
+- [ ] Additional LLM providers (OpenAI, Anthropic, Google)
+- [ ] PostgreSQL memory store implementation
+- [ ] RAG support for more file types (PDF, DOCX, etc.)
 
 ### Refactoring Opportunities
-- [ ] Extract CLI logic to separate class
+- [x] ~~Extract CLI logic to separate class~~ (Implemented: CliFrontend)
+- [x] ~~Separate concerns (UI, business logic, API)~~ (Implemented: Clean Architecture)
+- [x] ~~Add logging throughout application~~ (Implemented: Logback)
+- [x] ~~Add code documentation~~ (Implemented: KDoc comments)
+- [ ] Add dependency injection framework (e.g., Koin)
 - [ ] Create repository pattern for API calls
-- [ ] Add dependency injection
-- [ ] Separate concerns (UI, business logic, API)
 - [ ] Add validation layer for requests
 - [ ] Create response parser abstraction
-- [ ] Add metrics/telemetry
-- [ ] Implement caching layer
+- [ ] Add metrics/telemetry (Prometheus, Grafana)
+- [ ] Implement caching layer (Redis, in-memory)
 
 ### Code Quality
-- [ ] Add comprehensive unit tests
-- [ ] Add integration tests for API client
-- [ ] Add error recovery strategies
-- [ ] Improve error messages (localization)
-- [ ] Add logging throughout application
-- [ ] Add code documentation (KDoc)
-- [ ] Add input validation
-- [ ] Add request validation
+- [x] ~~Add comprehensive unit tests~~ (Implemented: Core, conversation, memory, MCP)
+- [x] ~~Add integration tests~~ (Implemented: Memory stores, configuration)
+- [ ] Add E2E tests (full conversation flow)
+- [ ] Add error recovery strategies (automatic retry)
+- [ ] Improve error messages (localization, i18n)
+- [ ] Add input validation (sanitization, length limits)
+- [ ] Add request validation (schema validation)
+- [ ] Add performance benchmarks
+- [ ] Add code coverage reporting
+- [ ] Add static code analysis (detekt, ktlint)
 
 ## Testing Strategy
 
 ### Current State
-- No tests currently implemented
-- Manual testing via terminal interaction
+The project has comprehensive test coverage with unit and integration tests.
 
-### Recommended Tests
-1. **Unit Tests**:
-   - ApiClient request building
-   - Message history management
-   - Error parsing
-   - Token cost calculation
-   - String extensions
+### Implemented Tests
 
-2. **Integration Tests**:
-   - API request/response flow
-   - Error handling scenarios
-   - History management
+1. **Core Configuration Tests** (`ConfigLoaderTest.kt`):
+   - Configuration loading from multiple sources
+   - Priority order validation
+   - Environment variable parsing
 
-3. **E2E Tests**:
-   - Full conversation flow
-   - Exit command handling
-   - Dialog end marker detection
+2. **Conversation Tests**:
+   - `ConversationManagerSummarizationTest.kt` - Summarization trigger logic
+   - `ConversationSummarizerTest.kt` - Summary generation
+   - `TokenCostCalculatorTest.kt` - Cost calculation accuracy
+   - `ToolRequestParserTest.kt` - Tool request parsing from various formats
+
+3. **Memory Tests**:
+   - `JsonMemoryStoreTest.kt` - JSON persistence operations
+   - `SqliteMemoryStoreTest.kt` - SQLite persistence operations
+   - `MemoryStoreFactoryTest.kt` - Factory creation logic
+
+4. **MCP Tests**:
+   - `McpSseClientTest.kt` - SSE client functionality
+   - `McpSseResponseParserTest.kt` - Response parsing
+
+5. **Domain Tests**:
+   - `MessageTest.kt` - Message model validation
+
+### Test Infrastructure
+- **Frameworks**: Kotlin Test, JUnit Platform
+- **Mocking**: MockK for Kotlin-specific mocking
+- **HTTP Mocking**: Ktor Client Mock for API testing
+- **Test Location**: `src/test/kotlin/`
 
 ## Security Considerations
 
