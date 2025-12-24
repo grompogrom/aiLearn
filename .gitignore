@@ -1,5 +1,5 @@
 .gradle
-*.log
+*.log*
 ailearn.history.json
 ailearn.history.db
 dataForRag/raw/
