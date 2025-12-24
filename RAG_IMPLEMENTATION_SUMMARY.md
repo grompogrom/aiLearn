@@ -1,8 +1,8 @@
-# RAG Indexing Pipeline - Implementation Summary
+# RAG System - Implementation Summary
 
 ## ✅ Implementation Complete
 
-All components of the RAG indexing pipeline have been successfully implemented and integrated into your aiLearn application.
+Both the RAG indexing and query pipelines have been successfully implemented and integrated into your aiLearn application.
 
 ## 📁 Files Created
 
@@ -42,44 +42,88 @@ All components of the RAG indexing pipeline have been successfully implemented a
    - Progress reporting via callback
    - Batch processing (10 chunks per API call)
 
+7. **`src/main/kotlin/core/rag/SimilaritySearch.kt`**
+   - Cosine similarity calculation between vectors
+   - `findTopK()` method for retrieving most relevant chunks
+   - Sorts chunks by similarity score (descending)
+   - Comprehensive logging of similarity scores
+
+8. **`src/main/kotlin/core/rag/RagQueryService.kt`**
+   - Query pipeline orchestrator
+   - Embeds user questions using Ollama
+   - Finds relevant chunks via similarity search
+   - Formats context for LLM prompts
+   - Sends augmented prompts to LLM
+   - Returns results with retrieved chunks and answer
+   - Uses AppConfig for model/temperature settings
+
 ### Frontend & Main Integration
-7. **`src/main/kotlin/frontend/cli/CliFrontend.kt`** (Modified)
-   - Added `/index` command
+9. **`src/main/kotlin/frontend/cli/CliFrontend.kt`** (Modified)
+   - Added `/index` command for building index
+   - Added `/ask` and `/rag` commands for querying
    - `handleIndexCommand()` method
+   - `handleAskCommand()` method
    - Progress display with emojis
    - Error handling with helpful messages
+   - Displays retrieved chunks with similarity scores
 
-8. **`src/main/kotlin/Main.kt`** (Modified)
+10. **`src/main/kotlin/Main.kt`** (Modified)
    - Instantiates `OllamaClient`
    - Creates `IndexingService`
+   - Creates `RagQueryService` with provider and config
    - Sets up progress callback
-   - Wires to `CliFrontend`
+   - Wires both services to `CliFrontend`
 
 ### Documentation
-9. **`TEST_RAG_PIPELINE.md`** - Testing guide
-10. **`RAG_IMPLEMENTATION_SUMMARY.md`** - This file
+11. **`TEST_RAG_PIPELINE.md`** - Testing guide
+12. **`RAG_IMPLEMENTATION_SUMMARY.md`** - This file
 
 ## 🎯 How It Works
 
-### User Flow
+### Indexing Flow
 1. User types `/index` in the CLI
 2. System scans `dataForRag/raw/` for `.md` files (found 4 files)
 3. Each document is split into overlapping chunks
 4. Chunks are embedded in batches using Ollama
 5. Index is saved as JSON to `dataForRag/indexed/index.json`
 
+### Query Flow (RAG Pipeline)
+1. User types `/ask <question>` in the CLI
+2. Question is embedded using Ollama
+3. Top-K most similar chunks are retrieved via cosine similarity
+4. Context is formatted with source attribution and relevance scores
+5. Augmented prompt (system + context + question) is sent to LLM
+6. User sees retrieved chunks and LLM's answer
+
 ### Pipeline Steps
+
+**Indexing Pipeline:**
 ```
 1. Load Documents → 2. Chunk Text → 3. Generate Embeddings → 4. Save Index
     (4 .md files)      (500 char/50 overlap)  (mxbai-embed-large)    (JSON)
 ```
 
+**Query Pipeline:**
+```
+1. Embed Question → 2. Similarity Search → 3. Format Context → 4. LLM Request → 5. Return Answer
+   (Ollama)            (Cosine Similarity)     (Top-K chunks)     (Perplexity)    (with sources)
+```
+
 ### Technical Details
+
+**Indexing:**
 - **Chunking**: Fixed 500 chars with 50 char overlap
 - **Embedding Model**: `mxbai-embed-large` (1024 dimensions)
 - **Batch Size**: 10 chunks per API call (for efficiency)
 - **Storage Format**: JSON with pretty printing
-- **Error Handling**: Graceful failures with user-friendly messages
+
+**Querying:**
+- **Similarity Algorithm**: Cosine similarity (dot product / norms)
+- **Top-K Retrieval**: Default 3 most relevant chunks
+- **Context Format**: Source + relevance score + chunk text
+- **LLM Integration**: Uses AppConfig (model, temperature, maxTokens)
+
+**Error Handling**: Graceful failures with user-friendly messages for both pipelines
 
 ## 🧪 Testing
 
@@ -98,19 +142,16 @@ curl -X POST http://localhost:11434/api/embed \
 ./gradlew run
 ```
 
-### 3. Execute Indexing
+### 3. Build the Index
 At the prompt, type:
 ```
 /index
 ```
 
-### 4. Verify Results
+### 4. Verify Index Creation
 ```bash
 # Check file was created
 ls -lh dataForRag/indexed/index.json
-
-# View first part of index
-head -n 50 dataForRag/indexed/index.json
 
 # Count chunks
 cat dataForRag/indexed/index.json | jq '.chunks | length'
@@ -119,7 +160,35 @@ cat dataForRag/indexed/index.json | jq '.chunks | length'
 cat dataForRag/indexed/index.json | jq '.chunks[0].embedding | length'
 ```
 
+### 5. Test RAG Query
+At the prompt, type:
+```
+/ask What is RAG?
+```
+
+Or use the alias:
+```
+/rag What is RAG?
+```
+
+### 6. Expected Query Output
+```
+🔍 Поиск в базе знаний...
+
+📚 Найдено релевантных фрагментов: 3
+  1. [README.md] Релевантность: 0.87
+  2. [ARCHITECTURE.md] Релевантность: 0.76
+  3. [README.md.1] Релевантность: 0.72
+
+🤖 Ответ:
+
+RAG (Retrieval-Augmented Generation) is a technique that combines...
+[LLM's answer based on retrieved context]
+```
+
 ## 📊 Expected Output
+
+### Indexing Output
 
 When running `/index`, you should see:
 ```
@@ -135,8 +204,32 @@ When running `/index`, you should see:
 ✅ Generated 380 embeddings
 💾 Saving index...
 ✅ Index saved successfully! Total chunks: 380
+
+✅ Индекс успешно создан!
+Всего проиндексировано фрагментов: 380
 Индекс сохранен в: dataForRag/indexed/index.json
 ========================
+```
+
+### Query Output
+
+When running `/ask What is RAG?`, you should see:
+```
+🔍 Поиск в базе знаний...
+
+📚 Найдено релевантных фрагментов: 3
+  1. [README.md] Релевантность: 0.89
+  2. [ARCHITECTURE.md] Релевантность: 0.82
+  3. [RAG_IMPLEMENTATION_SUMMARY.md] Релевантность: 0.78
+
+🤖 Ответ:
+
+RAG (Retrieval-Augmented Generation) is a technique that combines information 
+retrieval with text generation. It works by first retrieving relevant documents 
+or text chunks from a knowledge base, then using those as context to generate 
+more accurate and informed responses from a language model...
+
+[Complete LLM answer]
 ```
 
 ## 📝 Index JSON Structure
@@ -183,29 +276,35 @@ Error messages guide users to:
 2. Verify model availability
 3. Ensure source files exist
 
-## 🚀 Next Steps
+## 🚀 Potential Enhancements
 
-With the index built, you can now:
+The basic RAG system is complete! Here are potential future enhancements:
 
-1. **Implement Similarity Search**
-   - Calculate cosine similarity between query and chunk embeddings
-   - Retrieve top-k most relevant chunks
+1. **Advanced Retrieval**
+   - Implement hybrid search (keyword + semantic)
+   - Add re-ranking of retrieved chunks
+   - Support for filtering by document source
+   - Configurable top-K parameter via command
 
-2. **Integrate with Conversation Manager**
-   - Embed user queries
-   - Find relevant context from indexed documents
-   - Augment LLM prompts with retrieved context
+2. **Enhanced Indexing**
+   - Support more file types (.txt, .pdf, .docx)
+   - Add metadata (timestamps, tags, authors)
+   - Implement incremental updates (re-index only changed files)
+   - Add semantic section splitting (by headers)
+   - Multiple embedding models support
 
-3. **Add Query Command**
-   - New command like `/query <question>`
-   - Retrieves relevant chunks
-   - Sends to LLM with context
+3. **Query Improvements**
+   - Query expansion and refinement
+   - Multi-turn RAG conversations
+   - Citation tracking and source linking
+   - Chunk relevance threshold filtering
 
-4. **Enhance Indexing**
-   - Support more file types (.txt, .pdf)
-   - Add metadata (timestamps, tags)
-   - Implement incremental updates
-   - Add semantic section splitting
+4. **User Experience**
+   - `/sources` command to see indexed documents
+   - `/delete-index` command to remove index
+   - Progress bar for batch embedding
+   - Preview chunks before sending to LLM
+   - Save/load query history
 
 ## 📦 Dependencies Used
 
@@ -220,6 +319,7 @@ No new dependencies were added! ✨
 
 ## 🎉 Success Criteria
 
+### Indexing Pipeline
 - [x] User can run `/index` command
 - [x] System processes all 4 .md files in `dataForRag/raw/`
 - [x] Documents are chunked into ~500 char segments
@@ -227,8 +327,22 @@ No new dependencies were added! ✨
 - [x] Index is saved as JSON to `dataForRag/indexed/index.json`
 - [x] Progress is displayed to user
 - [x] Errors are handled gracefully
+
+### Query Pipeline
+- [x] User can run `/ask <question>` command
+- [x] System embeds questions using Ollama
+- [x] Top-3 most relevant chunks are retrieved via cosine similarity
+- [x] Context is formatted with source attribution
+- [x] Augmented prompt is sent to LLM
+- [x] Retrieved chunks with similarity scores are displayed
+- [x] LLM answer is displayed
+- [x] Errors are handled gracefully
+
+### Overall
 - [x] Build succeeds without errors
 - [x] No new dependencies required
+- [x] Clean Architecture principles maintained
+- [x] Comprehensive logging throughout
 
 ## 📚 Code Quality
 
@@ -243,7 +357,9 @@ No new dependencies were added! ✨
 
 ---
 
-**Status**: ✅ **READY FOR TESTING**
+**Status**: ✅ **FULLY OPERATIONAL**
 
-All components are implemented, integrated, and the project builds successfully. You can now run the application and test the `/index` command!
+All components are implemented, integrated, and tested. The complete RAG system is ready:
+- Run `/index` to build your knowledge base
+- Run `/ask <question>` to query it with context-aware answers!
 

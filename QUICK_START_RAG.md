@@ -1,6 +1,6 @@
-# RAG Indexing - Quick Start Guide
+# RAG System - Quick Start Guide
 
-## ⚡ Quick Test (30 seconds)
+## ⚡ Quick Test (60 seconds)
 
 ### 1. Check Ollama
 ```bash
@@ -21,7 +21,7 @@ At the prompt, type:
 /index
 ```
 
-### 4. Verify Output
+### 4. Verify Index
 ```bash
 cat dataForRag/indexed/index.json | jq '.model, .chunks | length'
 ```
@@ -31,22 +31,48 @@ Expected:
 380
 ```
 
+### 5. Ask a Question
+At the prompt, type:
+```
+/ask What is RAG?
+```
+
+Expected output:
+```
+🔍 Поиск в базе знаний...
+📚 Найдено релевантных фрагментов: 3
+  1. [README.md] Релевантность: 0.89
+  2. [ARCHITECTURE.md] Релевантность: 0.82
+  3. [RAG_IMPLEMENTATION_SUMMARY.md] Релевантность: 0.78
+🤖 Ответ:
+[LLM's context-aware answer]
+```
+
 ## 🎯 What Was Built
 
 | Component | Purpose | Location |
 |-----------|---------|----------|
 | **OllamaClient** | Calls Ollama API | `api/ollama/OllamaClient.kt` |
 | **DocumentChunker** | Splits text | `core/rag/DocumentChunker.kt` |
-| **IndexingService** | Orchestrates pipeline | `core/rag/IndexingService.kt` |
+| **IndexingService** | Orchestrates indexing | `core/rag/IndexingService.kt` |
 | **RagStorage** | Saves/loads JSON | `core/rag/RagStorage.kt` |
-| **CLI Command** | `/index` handler | `frontend/cli/CliFrontend.kt` |
+| **SimilaritySearch** | Cosine similarity & top-K | `core/rag/SimilaritySearch.kt` |
+| **RagQueryService** | Orchestrates RAG queries | `core/rag/RagQueryService.kt` |
+| **CLI Commands** | `/index` and `/ask` | `frontend/cli/CliFrontend.kt` |
 
-## 📊 Processing Details
+## 📊 System Details
 
+**Indexing:**
 - **Input**: 4 .md files (~190 KB total)
 - **Chunking**: 500 chars, 50 overlap → ~380 chunks
 - **Embedding**: mxbai-embed-large (1024 dims)
 - **Output**: JSON file (~12 MB with embeddings)
+
+**Querying:**
+- **Similarity**: Cosine similarity between vectors
+- **Retrieval**: Top-3 most relevant chunks
+- **Context**: Formatted with source + relevance score
+- **LLM**: Uses AppConfig settings (model, temperature, maxTokens)
 
 ## 🔍 Troubleshooting
 
@@ -56,24 +82,38 @@ Expected:
 | "Connection refused" | Check: `http://127.0.0.1:11434` |
 | "Model not found" | Pull model: `ollama pull mxbai-embed-large` |
 | "No .md files found" | Check `dataForRag/raw/` has files |
+| "RAG index not found" | Run `/index` first to build the index |
+| "RAG сервис недоступен" | Ensure Ollama client is configured |
 
 ## 📝 Available Commands
 
 | Command | Description |
 |---------|-------------|
 | `/index` | Build RAG index from documents |
+| `/ask <question>` | Query the knowledge base with context-aware answers |
+| `/rag <question>` | Alias for `/ask` command |
 | `/clear` | Clear conversation history |
 | `/mcp` | Show MCP tools |
 | `/reminder` | Toggle reminder checks |
 | `exit` | Quit application |
 
-## 🚀 What's Next?
+## 🚀 How to Use
 
-Now you can implement:
-1. **Query/Search**: Find relevant chunks for user questions
-2. **RAG Integration**: Augment LLM prompts with retrieved context
-3. **Incremental Updates**: Re-index only changed files
-4. **Multiple Models**: Support different embedding models
+**Basic Workflow:**
+1. Run `/index` once to build your knowledge base
+2. Ask questions anytime with `/ask <your question>`
+3. Get answers with source attribution and relevance scores
+
+**Example Questions:**
+- `/ask What is Clean Architecture?`
+- `/ask How does the MCP integration work?`
+- `/ask What are the main components of this system?`
+- `/rag Explain the RAG pipeline`
+
+**Advanced Usage:**
+- Re-run `/index` after adding new documents to `dataForRag/raw/`
+- Check indexed sources by examining `dataForRag/indexed/index.json`
+- Adjust LLM settings via environment variables (temperature, model, etc.)
 
 ## 📖 Full Documentation
 
@@ -83,5 +123,7 @@ Now you can implement:
 
 ---
 
-**Status**: ✅ Ready to use! Run `/index` to create your first RAG index.
+**Status**: ✅ Fully operational! 
+- Run `/index` to build your knowledge base
+- Run `/ask <question>` to get context-aware answers
 
