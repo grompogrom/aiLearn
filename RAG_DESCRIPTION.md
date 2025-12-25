@@ -67,15 +67,23 @@ Expected output:
 ========================
 ```
 
-3. **Query Knowledge Base**:
+3. **Enable RAG Mode**:
 ```
-/ask What is RAG?
+/rag
 ```
 
 Expected output:
 ```
-🔍 Поиск в базе знаний...
+✓ RAG режим включен. Все запросы будут использовать базу знаний.
+```
 
+4. **Ask Questions** (all queries now use RAG):
+```
+What is RAG?
+```
+
+Expected output:
+```
 📚 Найдено релевантных фрагментов: 3
   1. [README.md] Релевантность: 0.89
   2. [ARCHITECTURE.md] Релевантность: 0.82
@@ -83,6 +91,11 @@ Expected output:
 
 🤖 Ответ:
 [LLM's context-aware answer]
+```
+
+**Alternative**: Use one-time queries without enabling RAG mode:
+```
+/ask What is RAG?
 ```
 
 ## Architecture
@@ -617,12 +630,30 @@ ollama pull mxbai-embed-large
 | Command | Description |
 |---------|-------------|
 | `/index` | Build RAG index from documents |
-| `/ask <question>` | Query knowledge base with context-aware answer |
-| `/rag <question>` | Alias for `/ask` |
+| `/rag` | **Toggle RAG mode** - enable/disable RAG for all queries |
+| `/ask <question>` | One-time query to knowledge base |
+| `/rag <question>` | One-time query to knowledge base (same as `/ask`) |
 | `/clear` | Clear conversation history |
 | `/mcp` | Show MCP tools |
 | `/reminder` | Toggle reminder checks |
 | `exit` | Quit application |
+
+### RAG Mode vs One-time Queries
+
+**RAG Mode** (recommended for working with documentation):
+```bash
+/rag              # Toggle RAG mode on
+What is RAG?      # All regular queries now use RAG
+How does it work? # Still using RAG
+/rag              # Toggle RAG mode off
+```
+
+**One-time Queries** (for occasional RAG usage):
+```bash
+/ask What is RAG?        # Single RAG query
+How does it work?        # Regular query (no RAG)
+/rag What is indexing?   # Another single RAG query
+```
 
 ## Advanced Usage
 

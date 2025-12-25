@@ -36,6 +36,9 @@ class CliFrontend(
     private val indexCommands = setOf("/index")
     private val askCommands = setOf("/ask", "/rag")
     private val tokenCalculator = TokenCostCalculator(config)
+    
+    // RAG mode state - when enabled, all queries use RAG system
+    private var ragEnabled: Boolean = false
 
     override suspend fun start(conversationManager: ConversationManager) {
         logger.info("Starting CLI frontend")
@@ -68,14 +71,18 @@ class CliFrontend(
                     logger.debug("User requested index command")
                     handleIndexCommand()
                 }
-                userInput.content.lowercase().startsWith("/ask ") || userInput.content.lowercase().startsWith("/rag ") -> {
-                    logger.debug("User requested RAG query")
-                    val command = userInput.content.trim()
-                    val question = when {
-                        command.lowercase().startsWith("/ask ") -> command.substring(5).trim()
-                        command.lowercase().startsWith("/rag ") -> command.substring(5).trim()
-                        else -> ""
-                    }
+                userInput.content.lowercase() == "/rag" -> {
+                    logger.debug("User requested RAG toggle")
+                    handleRagToggle()
+                }
+                userInput.content.lowercase().startsWith("/rag ") -> {
+                    logger.debug("User requested one-time RAG query")
+                    val question = userInput.content.substring(5).trim()
+                    handleAskCommand(question)
+                }
+                userInput.content.lowercase().startsWith("/ask ") -> {
+                    logger.debug("User requested one-time RAG query via /ask")
+                    val question = userInput.content.substring(5).trim()
                     handleAskCommand(question)
                 }
                 else -> {
@@ -128,8 +135,9 @@ class CliFrontend(
         println("\nВведите 'exit' или 'quit' для выхода в любой момент")
         println("Введите '/clear' или '/clearhistory' для очистки истории диалога")
         println("Введите '/reminder' для включения/выключения проверки напоминаний (по умолчанию выключена)")
+        println("Введите '/rag' для включения/выключения RAG режима (по умолчанию выключен)")
         println("Введите '/index' для создания RAG индекса из документов")
-        println("Введите '/ask <вопрос>' для поиска ответа в базе знаний")
+        println("Введите '/ask <вопрос>' для разового поиска ответа в базе знаний")
         println("temp is ${config.temperature}")
     }
 
@@ -246,6 +254,29 @@ class CliFrontend(
         }
     }
     
+    /**
+     * Toggles RAG mode on/off for all queries.
+     */
+    private fun handleRagToggle() {
+        logger.debug("Toggling RAG mode")
+        val service = ragQueryService
+        if (service == null) {
+            logger.warn("RAG query service not available")
+            println("\nRAG сервис недоступен. Ollama не настроена.")
+            return
+        }
+        
+        ragEnabled = !ragEnabled
+        
+        if (ragEnabled) {
+            logger.info("RAG mode enabled")
+            println("\n✓ RAG режим включен. Все запросы будут использовать базу знаний.")
+        } else {
+            logger.info("RAG mode disabled")
+            println("\n✓ RAG режим выключен.")
+        }
+    }
+    
     private suspend fun handleIndexCommand() {
         logger.debug("Handling index command")
         val service = indexingService
@@ -323,12 +354,56 @@ class CliFrontend(
             println("Убедитесь, что Ollama запущена и индекс создан.")
         }
     }
+    
+    /**
+     * Handles RAG query in normal conversation flow (when RAG mode is enabled).
+     * This method is called for regular user input when ragEnabled is true.
+     */
+    private suspend fun handleRagQuery(question: String) {
+        logger.debug("Handling RAG query in enabled mode: $question")
+        try {
+            val result = ragQueryService!!.query(question)
+            
+            // Display retrieved chunks
+            println("\n📚 Найдено релевантных фрагментов: ${result.retrievedChunks.size}")
+            result.retrievedChunks.forEachIndexed { index, chunk ->
+                // Check if re-ranking was used (both scores present)
+                if (chunk.cosineScore != null && chunk.llmScore != null) {
+                    println("  ${index + 1}. [${chunk.source}] Cosine: ${"%.2f".format(chunk.cosineScore)} → LLM: ${"%.2f".format(chunk.llmScore)}")
+                } else {
+                    println("  ${index + 1}. [${chunk.source}] Релевантность: ${"%.2f".format(chunk.similarity)}")
+                }
+            }
+            
+            // Display answer
+            println("\n🤖 Ответ:\n")
+            println(result.answer)
+            println()
+        } catch (e: RagIndexNotFoundException) {
+            logger.warn("RAG index not found", e)
+            println("\n✗ ${e.message}")
+            println("Используйте команду /index для создания индекса.")
+            println("RAG режим остается включенным. Используйте /rag для выключения.")
+        } catch (e: Exception) {
+            logger.error("RAG query failed", e)
+            println("\n✗ Ошибка RAG запроса: ${e.message}")
+            println("Убедитесь, что Ollama запущена и индекс создан.")
+        }
+    }
 
     private suspend fun handleUserRequest(
         conversationManager: ConversationManager,
         userInput: String
     ): Boolean {
         return try {
+            // If RAG is enabled, route through RAG query service
+            if (ragEnabled && ragQueryService != null) {
+                logger.debug("RAG mode is enabled, routing to RAG service")
+                handleRagQuery(userInput)
+                return true  // Continue dialog
+            }
+            
+            // Normal flow without RAG
             val response = conversationManager.sendRequest(userInput)
             val output = formatResponse(response)
             

@@ -526,9 +526,18 @@ The application includes a comprehensive RAG (Retrieval-Augmented Generation) sy
 # Build index from documents in dataForRag/raw/
 /index
 
-# Query knowledge base
+# Enable RAG mode (toggle) - all queries will use RAG
+/rag
+
+# Now all regular queries use RAG automatically
+What is RAG?
+How does indexing work?
+
+# Disable RAG mode (toggle again)
+/rag
+
+# One-time RAG queries (without enabling mode)
 /ask What is RAG?
-# or
 /rag What is RAG?
 ```
 
@@ -561,7 +570,14 @@ The application provides several built-in commands for different functionalities
   - Saves index to `dataForRag/indexed/index.json`
   - Shows progress during indexing
 
-- **`/ask <question>`** or **`/rag <question>`** - Query the RAG knowledge base
+- **`/rag`** - Toggle RAG mode on/off for all queries
+  - When enabled: all regular user queries automatically use RAG system
+  - When disabled: normal conversation flow without RAG
+  - Disabled by default
+  - Similar behavior to `/reminder` toggle command
+
+- **`/ask <question>`** or **`/rag <question>`** - One-time RAG query
+  - Performs a single RAG query regardless of RAG mode state
   - Retrieves relevant chunks using cosine similarity
   - Optionally re-ranks results using LLM (if enabled)
   - Generates answer using LLM with retrieved context
