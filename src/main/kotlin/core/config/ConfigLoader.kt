@@ -153,6 +153,10 @@ private class EnvironmentConfig : AppConfig {
     override val ragFilterThreshold: Double
         get() = System.getenv("AILEARN_RAG_FILTER_THRESHOLD")?.toDoubleOrNull()
             ?: DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
+    
+    override val ragHistoryContextSize: Int
+        get() = System.getenv("AILEARN_RAG_HISTORY_CONTEXT_SIZE")?.toIntOrNull()
+            ?: DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE
 }
 
 /**
@@ -219,6 +223,7 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val ragCandidateCount: Int get() = getInt("rag.candidate.count", DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT)
     override val ragRerankModel: String get() = getString("rag.rerank.model", DefaultConfig.DEFAULT_RAG_RERANK_MODEL)
     override val ragFilterThreshold: Double get() = getDouble("rag.filter.threshold", DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD)
+    override val ragHistoryContextSize: Int get() = getInt("rag.history.context.size", DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE)
 }
 
 /**
@@ -290,6 +295,7 @@ private class BuildConfigWrapper : AppConfig {
     override val ragCandidateCount: Int = DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT
     override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
     override val ragFilterThreshold: Double = DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
+    override val ragHistoryContextSize: Int = DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE
 }
 
 /**
@@ -329,6 +335,7 @@ private class DefaultAppConfig : AppConfig {
     override val ragCandidateCount: Int = DefaultConfig.DEFAULT_RAG_CANDIDATE_COUNT
     override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
     override val ragFilterThreshold: Double = DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
+    override val ragHistoryContextSize: Int = DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE
 }
 
 /**
@@ -371,4 +378,5 @@ private class CompositeConfig(
     override val ragCandidateCount: Int get() = if (primary.ragCandidateCount > 0) primary.ragCandidateCount else fallback.ragCandidateCount
     override val ragRerankModel: String get() = primary.ragRerankModel.ifEmpty { fallback.ragRerankModel }
     override val ragFilterThreshold: Double get() = if (primary.ragFilterThreshold > 0) primary.ragFilterThreshold else fallback.ragFilterThreshold
+    override val ragHistoryContextSize: Int get() = if (primary.ragHistoryContextSize > 0) primary.ragHistoryContextSize else fallback.ragHistoryContextSize
 }

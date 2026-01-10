@@ -52,6 +52,9 @@ interface AppConfig {
     
     // RAG filtering configuration
     val ragFilterThreshold: Double
+    
+    // RAG history context configuration
+    val ragHistoryContextSize: Int
 }
 
 /**
@@ -96,4 +99,7 @@ object DefaultConfig {
     
     // RAG filtering defaults
     const val DEFAULT_RAG_FILTER_THRESHOLD = 0.7
+    
+    // RAG history context defaults
+    const val DEFAULT_RAG_HISTORY_CONTEXT_SIZE = 5
 }

@@ -332,12 +332,19 @@ class CliFrontend(
             // Display retrieved chunks
             println("\n📚 Найдено релевантных фрагментов: ${result.retrievedChunks.size}")
             result.retrievedChunks.forEachIndexed { index, chunk ->
+                println()
                 // Check if re-ranking was used (both scores present)
                 if (chunk.cosineScore != null && chunk.llmScore != null) {
                     println("  ${index + 1}. [${chunk.source}] Cosine: ${"%.2f".format(chunk.cosineScore)} → LLM: ${"%.2f".format(chunk.llmScore)}")
                 } else {
                     println("  ${index + 1}. [${chunk.source}] Релевантность: ${"%.2f".format(chunk.similarity)}")
                 }
+                println("  ---")
+                // Display chunk content with indentation
+                chunk.text.lines().forEach { line ->
+                    println("  $line")
+                }
+                println("  ---")
             }
             
             // Display LLM answer
@@ -355,52 +362,57 @@ class CliFrontend(
         }
     }
     
-    /**
-     * Handles RAG query in normal conversation flow (when RAG mode is enabled).
-     * This method is called for regular user input when ragEnabled is true.
-     */
-    private suspend fun handleRagQuery(question: String) {
-        logger.debug("Handling RAG query in enabled mode: $question")
-        try {
-            val result = ragQueryService!!.query(question)
-            
-            // Display retrieved chunks
-            println("\n📚 Найдено релевантных фрагментов: ${result.retrievedChunks.size}")
-            result.retrievedChunks.forEachIndexed { index, chunk ->
-                // Check if re-ranking was used (both scores present)
-                if (chunk.cosineScore != null && chunk.llmScore != null) {
-                    println("  ${index + 1}. [${chunk.source}] Cosine: ${"%.2f".format(chunk.cosineScore)} → LLM: ${"%.2f".format(chunk.llmScore)}")
-                } else {
-                    println("  ${index + 1}. [${chunk.source}] Релевантность: ${"%.2f".format(chunk.similarity)}")
-                }
-            }
-            
-            // Display answer
-            println("\n🤖 Ответ:\n")
-            println(result.answer)
-            println()
-        } catch (e: RagIndexNotFoundException) {
-            logger.warn("RAG index not found", e)
-            println("\n✗ ${e.message}")
-            println("Используйте команду /index для создания индекса.")
-            println("RAG режим остается включенным. Используйте /rag для выключения.")
-        } catch (e: Exception) {
-            logger.error("RAG query failed", e)
-            println("\n✗ Ошибка RAG запроса: ${e.message}")
-            println("Убедитесь, что Ollama запущена и индекс создан.")
-        }
-    }
-
     private suspend fun handleUserRequest(
         conversationManager: ConversationManager,
         userInput: String
     ): Boolean {
         return try {
-            // If RAG is enabled, route through RAG query service
+            // If RAG is enabled, route through ConversationManager with RAG
             if (ragEnabled && ragQueryService != null) {
-                logger.debug("RAG mode is enabled, routing to RAG service")
-                handleRagQuery(userInput)
-                return true  // Continue dialog
+                logger.debug("RAG mode is enabled, routing through ConversationManager with RAG")
+                
+                try {
+                    val response = conversationManager.sendRequestWithRag(userInput, ragQueryService!!)
+                    
+                    // Display answer
+                    println("\n🤖 Ответ:\n")
+                    println(response.content)
+                    println()
+                    
+                    // Display retrieved chunks if available
+                    response.retrievedChunks?.takeIf { it.isNotEmpty() }?.let { chunks ->
+                        println("📚 Использованные фрагменты (${chunks.size}):")
+                        chunks.forEachIndexed { index, chunk ->
+                            println()
+                            // Check if re-ranking was used (both scores present)
+                            if (chunk.cosineScore != null && chunk.llmScore != null) {
+                                println("  ${index + 1}. [${chunk.source}] Cosine: ${"%.2f".format(chunk.cosineScore)} → LLM: ${"%.2f".format(chunk.llmScore)}")
+                            } else {
+                                println("  ${index + 1}. [${chunk.source}] Релевантность: ${"%.2f".format(chunk.similarity)}")
+                            }
+                            println("  ---")
+                            // Display chunk content with indentation
+                            chunk.text.lines().forEach { line ->
+                                println("  $line")
+                            }
+                            println("  ---")
+                        }
+                        println()
+                    }
+                    
+                    return true  // Continue dialog
+                } catch (e: RagIndexNotFoundException) {
+                    logger.warn("RAG index not found", e)
+                    println("\n✗ ${e.message}")
+                    println("Используйте команду /index для создания индекса.")
+                    println("RAG режим остается включенным. Используйте /rag для выключения.")
+                    return true
+                } catch (e: Exception) {
+                    logger.error("RAG query failed", e)
+                    println("\n✗ Ошибка RAG запроса: ${e.message}")
+                    println("Убедитесь, что Ollama запущена и индекс создан.")
+                    return true
+                }
             }
             
             // Normal flow without RAG

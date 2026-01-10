@@ -46,6 +46,7 @@ class SqliteMemoryStoreTest {
         override val ragCandidateCount: Int = 15
         override val ragRerankModel: String = "qwen2.5"
         override val ragFilterThreshold: Double = 0.7
+        override val ragHistoryContextSize: Int = 5
     }
     
     @AfterTest

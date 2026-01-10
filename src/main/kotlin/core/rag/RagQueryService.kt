@@ -64,6 +64,80 @@ class RagQueryService(
 ) {
     
     /**
+     * Executes a RAG query with conversation history context.
+     * Uses recent messages from conversation history to build a more context-aware query embedding.
+     * 
+     * Pipeline steps:
+     * 1. Load index from disk
+     * 2. Concatenate recent messages with current question
+     * 3. Embed the combined text
+     * 4. Find top-K most similar chunks (or more candidates if re-ranking is enabled)
+     * 5. Re-rank candidates with LLM if enabled
+     * 6. Filter chunks by threshold (default: 0.7)
+     * 7. Format context from retrieved chunks
+     * 8. Create augmented prompt
+     * 9. Send to LLM for answer generation
+     * 10. Return result with answer and retrieved chunks
+     * 
+     * @param question The user's current question
+     * @param recentMessages Recent messages from conversation history for context
+     * @param topK Number of top relevant chunks to retrieve (default: 3)
+     * @return QueryResult containing the answer and retrieved chunks
+     * @throws RagIndexNotFoundException if index file is not found
+     * @throws Exception if Ollama or LLM request fails
+     */
+    suspend fun queryWithHistory(
+        question: String,
+        recentMessages: List<Message>,
+        topK: Int = 3
+    ): QueryResult {
+        logger.info("Starting RAG query with history context: \"$question\" (${recentMessages.size} recent messages)")
+        logger.debug("Query parameters: topK=$topK, model=$model")
+        
+        // Step 1: Load index
+        logger.debug("Loading RAG index from storage")
+        val index = storage.loadIndex()
+            ?: throw RagIndexNotFoundException()
+        
+        logger.info("Loaded index with ${index.chunks.size} chunks (model: ${index.model})")
+        
+        // Step 2: Concatenate recent messages with current question
+        val combinedText = buildString {
+            if (recentMessages.isNotEmpty()) {
+                logger.debug("Concatenating ${recentMessages.size} recent messages")
+                for (message in recentMessages) {
+                    append(message.content)
+                    append("\n")
+                }
+                append("Current question: ")
+            }
+            append(question)
+        }
+        
+        logger.debug("Combined text length: ${combinedText.length} characters")
+        
+        // Step 3: Embed the combined text
+        logger.debug("Embedding combined text with Ollama (model: $model)")
+        val questionEmbeddings = try {
+            ollamaClient.embedText(model, listOf(combinedText))
+        } catch (e: Exception) {
+            logger.error("Failed to embed combined text", e)
+            throw Exception("Failed to embed combined text with Ollama: ${e.message}", e)
+        }
+        
+        if (questionEmbeddings.isEmpty()) {
+            logger.error("Ollama returned empty embeddings")
+            throw Exception("Ollama returned empty embeddings")
+        }
+        
+        val questionEmbedding = questionEmbeddings[0]
+        logger.info("Combined text embedded successfully (dimension: ${questionEmbedding.size})")
+        
+        // Continue with the same pipeline as query()
+        return executeQueryPipeline(questionEmbedding, question, topK, index)
+    }
+    
+    /**
      * Executes a RAG query: retrieves relevant chunks and generates an answer.
      * 
      * Pipeline steps:
@@ -111,6 +185,26 @@ class RagQueryService(
         val questionEmbedding = questionEmbeddings[0]
         logger.info("Question embedded successfully (dimension: ${questionEmbedding.size})")
         
+        // Continue with the same pipeline
+        return executeQueryPipeline(questionEmbedding, question, topK, index)
+    }
+    
+    /**
+     * Shared query pipeline logic used by both query() and queryWithHistory().
+     * Executes the retrieval, re-ranking, filtering, and answer generation steps.
+     * 
+     * @param questionEmbedding The embedding vector for the query
+     * @param question The original user question (for display in prompt)
+     * @param topK Number of top chunks to use for answer generation
+     * @param index The RAG index to search
+     * @return QueryResult containing the answer and retrieved chunks
+     */
+    private suspend fun executeQueryPipeline(
+        questionEmbedding: List<Float>,
+        question: String,
+        topK: Int,
+        index: RagIndex
+    ): QueryResult {
         // Step 3: Find top-K similar chunks (or more candidates if re-ranking is enabled)
         val candidateCount = if (config.ragReranking && reranker != null) {
             config.ragCandidateCount

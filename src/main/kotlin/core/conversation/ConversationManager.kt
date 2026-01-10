@@ -9,6 +9,7 @@ import core.domain.TokenUsage
 import core.mcp.McpService
 import core.memory.MemoryStore
 import core.provider.LlmProvider
+import core.rag.RagQueryService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -313,5 +314,86 @@ class ConversationManager(
         val response = llmProvider.sendRequest(request)
         logger.debug("Received response without history (content length: ${response.content.length})")
         return response
+    }
+    
+    /**
+     * Sends a request using RAG (Retrieval-Augmented Generation) with conversation history context.
+     * This method:
+     * 1. Adds user message to conversation history
+     * 2. Extracts last N messages from history for context
+     * 3. Calls RAG query service to retrieve relevant chunks and generate answer
+     * 4. Adds only the LLM answer to history (NOT the chunks)
+     * 5. Returns ChatResponse with answer and token usage
+     * 
+     * @param userContent The user question
+     * @param ragQueryService The RAG query service to use
+     * @param temperature Optional temperature override (defaults to config temperature)
+     * @return ChatResponse with the LLM answer and token usage
+     */
+    suspend fun sendRequestWithRag(
+        userContent: String,
+        ragQueryService: RagQueryService,
+        temperature: Double? = null
+    ): ChatResponse {
+        logger.debug("Processing RAG request with history (content length: ${userContent.length})")
+        
+        // Add user message to history
+        if (config.useMessageHistory) {
+            logger.debug("Adding user message to history (history size: ${messageHistory.size})")
+            messageHistory.add(Message.create(MessageRole.USER, userContent))
+            saveHistoryAsync()
+        }
+        
+        // Extract last N messages from history (excluding system prompt)
+        val recentMessages = getRecentMessages(config.ragHistoryContextSize)
+        logger.debug("Extracted ${recentMessages.size} recent messages for RAG context")
+        
+        // Call RAG query service with history context
+        val ragResult = ragQueryService.queryWithHistory(
+            question = userContent,
+            recentMessages = recentMessages
+        )
+        
+        logger.info("RAG query completed (answer length: ${ragResult.answer.length}, chunks: ${ragResult.retrievedChunks.size})")
+        
+        // Create ChatResponse from RAG result with retrieved chunks
+        // Note: We don't have actual token usage from RAG, so we use a placeholder
+        // The LLM provider was called internally by RagQueryService, but we don't get the usage back
+        val response = ChatResponse(
+            content = ragResult.answer,
+            usage = TokenUsage(
+                promptTokens = 0,
+                completionTokens = 0,
+                totalTokens = 0
+            ),
+            retrievedChunks = ragResult.retrievedChunks
+        )
+        
+        // Add only the LLM answer to history (NOT the chunks)
+        if (config.useMessageHistory) {
+            messageHistory.add(Message.create(MessageRole.ASSISTANT, ragResult.answer))
+            logger.debug("Added assistant response to history (history size: ${messageHistory.size})")
+            saveHistoryAsync()
+        }
+        
+        return response
+    }
+    
+    /**
+     * Gets the last N messages from history, excluding system prompts.
+     * 
+     * @param count Number of recent messages to retrieve
+     * @return List of recent messages (may be less than count if history is smaller)
+     */
+    private fun getRecentMessages(count: Int): List<Message> {
+        if (!config.useMessageHistory || messageHistory.isEmpty()) {
+            return emptyList()
+        }
+        
+        // Filter out system prompts and take last N messages
+        val nonSystemMessages = messageHistory.filter { it.role != MessageRole.SYSTEM }
+        val startIndex = maxOf(0, nonSystemMessages.size - count)
+        
+        return nonSystemMessages.subList(startIndex, nonSystemMessages.size)
     }
 }
