@@ -8,6 +8,7 @@ import api.mcp.McpClient
 import api.mcp.McpClientsManager
 import api.mcp.McpConfig
 import api.mcp.McpSseClient
+import api.mcp.McpStdioClient
 import api.mcp.McpServiceImpl
 import api.mcp.McpStreamableHttpClient
 import api.mcp.McpTransportType
@@ -57,6 +58,7 @@ fun main() = runBlocking {
             when (serverConfig.transportType) {
                 McpTransportType.SSE -> McpSseClient(serverConfig)
                 McpTransportType.STREAMABLE_HTTP -> McpStreamableHttpClient(serverConfig)
+                McpTransportType.STDIO -> McpStdioClient(serverConfig)
             }
         }
         logger.info("MCP clients created: ${mcpClients.size}")

@@ -8,11 +8,16 @@ enum class McpTransportType {
      * Server-Sent Events (SSE) transport.
      */
     SSE,
-    
+
     /**
      * Streamable HTTP transport.
      */
-    STREAMABLE_HTTP
+    STREAMABLE_HTTP,
+
+    /**
+     * STDIO transport.
+     */
+    STDIO
 }
 
 /**
@@ -77,7 +82,7 @@ data class McpServerConfig(
 
 /**
  * Configuration for multiple MCP servers.
- * 
+ *
  * This class holds the configuration for all MCP servers that the application
  * should connect to. Servers are defined in code here.
  */
@@ -89,6 +94,13 @@ object McpConfig {
             transportType = McpTransportType.SSE,
             requestTimeoutMillis = 15_000L
         ),
+        // Example configuration for git MCP server via STDIO
+        McpServerConfig(
+            id = "git",
+            host = "uvx mcp-server-git",
+            transportType = McpTransportType.STDIO,
+            requestTimeoutMillis = 15_000L
+        )
         // McpServerConfig(
         //     id = "streamable-http-server",
         //     baseUrl = "http://127.0.0.1:8000/mcp",
@@ -96,7 +108,7 @@ object McpConfig {
         //     requestTimeoutMillis = 15_000L
         // )
     )
-    
+
     /**
      * Gets a server configuration by ID.
      * @return The server config if found, null otherwise.
@@ -104,7 +116,7 @@ object McpConfig {
     fun getServerById(id: String): McpServerConfig? {
         return servers.find { it.id == id }
     }
-    
+
     /**
      * Checks if any servers are configured.
      */
