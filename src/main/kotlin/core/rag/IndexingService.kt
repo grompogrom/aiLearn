@@ -30,21 +30,22 @@ class IndexingService(
     var progressCallback: ((String) -> Unit)? = null
     
     /**
-     * Builds an index from all .md files in the specified directory.
-     * 
-     * @param sourceDirectory Directory containing .md files to index (default: dataForRag/raw)
+     * Builds an index from all .md files in the specified directory and its subdirectories.
+     *
+     * @param sourceDirectory Directory containing .md files to index (default: current working directory)
      * @return The number of chunks indexed
      */
-    suspend fun buildIndex(sourceDirectory: String = "dataForRag/raw"): Int {
-        logger.info("Starting index build from directory: $sourceDirectory")
+    suspend fun buildIndex(sourceDirectory: String = ""): Int {
+        val dirToUse = if (sourceDirectory.isEmpty()) System.getProperty("user.dir") else sourceDirectory
+        logger.info("Starting index build from directory: $dirToUse")
         reportProgress("🔍 Scanning for .md files...")
-        
+
         // 1. Scan directory for .md files
-        val documents = loadDocuments(sourceDirectory)
+        val documents = loadDocuments(dirToUse)
         
         if (documents.isEmpty()) {
-            logger.warn("No .md files found in $sourceDirectory")
-            reportProgress("⚠️ No .md files found in $sourceDirectory")
+            logger.warn("No .md files found in $dirToUse")
+            reportProgress("⚠️ No .md files found in $dirToUse")
             return 0
         }
         
@@ -80,42 +81,43 @@ class IndexingService(
     }
     
     /**
-     * Loads all .md files from a directory.
-     * 
+     * Loads all .md files from a directory and its subdirectories.
+     *
      * @param directory Directory to scan
      * @return Map of filename to content
      */
     private fun loadDocuments(directory: String): Map<String, String> {
         val dir = File(directory)
-        
+
         if (!dir.exists() || !dir.isDirectory) {
             logger.error("Directory does not exist or is not a directory: $directory")
             throw IllegalArgumentException("Invalid directory: $directory")
         }
-        
-        val mdFiles = dir.listFiles { file ->
-            file.isFile && file.extension.lowercase() == "md"
-        } ?: emptyArray()
-        
-        logger.debug("Found ${mdFiles.size} .md files in $directory")
-        
+
+        val mdFiles = dir.walk().filter {
+            it.isFile && it.extension.lowercase() == "md"
+        }.toList()
+
+        logger.debug("Found ${mdFiles.size} .md files in $directory and its subdirectories")
+
         val documents = mutableMapOf<String, String>()
-        
+
         for (file in mdFiles) {
             try {
+                val relativePath = file.relativeTo(dir).toString()
                 val content = file.readText()
                 if (content.isNotBlank()) {
-                    documents[file.name] = content
-                    logger.debug("Loaded ${file.name} (${content.length} chars)")
+                    documents[relativePath] = content
+                    logger.debug("Loaded $relativePath (${content.length} chars)")
                 } else {
-                    logger.warn("Skipping empty file: ${file.name}")
+                    logger.warn("Skipping empty file: $relativePath")
                 }
             } catch (e: Exception) {
-                logger.error("Failed to read file: ${file.name}", e)
-                reportProgress("⚠️ Failed to read ${file.name}: ${e.message}")
+                logger.error("Failed to read file: $file.absolutePath", e)
+                reportProgress("⚠️ Failed to read $file.name: ${e.message}")
             }
         }
-        
+
         return documents
     }
     

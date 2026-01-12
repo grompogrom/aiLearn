@@ -289,12 +289,14 @@ class CliFrontend(
         println("\n=== Создание RAG индекса ===")
         
         try {
-            val chunksCount = service.buildIndex()
-            
+            val currentDir = System.getProperty("user.dir")
+            val chunksCount = service.buildIndex(currentDir)
+
             if (chunksCount > 0) {
                 println("\n✅ Индекс успешно создан!")
                 println("Всего проиндексировано фрагментов: $chunksCount")
                 println("Индекс сохранен в: dataForRag/indexed/index.json")
+                println("Поиск файлов осуществлялся в директории: $currentDir")
             } else {
                 println("\n⚠️ Индекс создан, но не содержит фрагментов.")
             }
@@ -304,7 +306,7 @@ class CliFrontend(
             println("Убедитесь, что:")
             println("  - Ollama запущена (http://127.0.0.1:11434)")
             println("  - Модель mxbai-embed-large доступна")
-            println("  - Директория dataForRag/raw содержит .md файлы")
+            println("  - Текущая директория содержит .md файлы")
         }
         
         println("========================\n")
