@@ -177,13 +177,40 @@ class ToolCallingHandler(
 Available MCP tools (from list_tools response):
 $toolsDescription
 
+TOOL USAGE INSTRUCTIONS:
+- When you need information or actions that require external resources, always check the above list first
+- Tools provide structured access to system resources, files, services, and external data sources
+- Use tools to avoid guessing, fabricating, or making assumptions about information
+
+HOW TO USE TOOLS:
+1. Examine the task carefully to determine if any of the above tools are needed
+2. Identify the appropriate tool based on name, description, and schema
+3. Construct valid JSON arguments that conform to the tool's input schema
+4. When you need to call a tool, respond with ONLY the tool call in this exact format:
+   {"tool": "exact_tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}
+5. Wait for the tool execution results before continuing your response
+6. After receiving tool results, analyze them and determine if additional tools are needed or if you can answer the original question
+7. If multiple tools are needed, chain them appropriately
+
+TOOL CALL FORMAT:
+- Response must contain ONLY the JSON tool call when you want to execute a tool
+- Do NOT wrap the JSON in ```json ``` or any other formatting
+- Do NOT include explanatory text with the tool call - just the JSON
+- After the tool result is returned, you can then provide your analysis or call another tool
+
+EXAMPLE TOOL CHAIN:
+- User asks: "Show me recent git commits and send a notification"
+- You call: {"tool": "git_log", "arguments": {"count": 5}}
+- Receive results, then call: {"tool": "send_notification", "arguments": {"message": "recent commits found"}}
+- Then provide final response to user
+
 CRITICAL RULES:
-1. If task requires external action/data (file ops, reminders, Docker, Android ADB) → IMMEDIATELY call EXACT matching tool with VALID JSON args per schema.
-2. NEVER fabricate data/results. If tool needed → call it FIRST.
-3. After tool response: analyze output, call follow-up tools if needed, THEN respond.
-4. Respond ONLY with tool call JSON when tool required: {"tool": "exact_name", "arguments": {...}}
-5. Chain tools: e.g. list_reminders → claimDue → ackSent.
-6. Environment: Docker Android emulator; real device via ADB.
+1. If task requires external action/data → IMMEDIATELY call EXACT matching tool with VALID JSON args per schema
+2. NEVER fabricate data/results - if tool needed → call it FIRST
+3. After tool response: analyze output, call follow-up tools if needed, THEN respond
+4. Respond ONLY with tool call JSON when tool required (as shown in format section)
+5. If no tools are appropriate for the task, respond normally without tool calls
+6. Respect the input schema requirements for each tool - invalid arguments will cause errors
 
 User task:"""
     }

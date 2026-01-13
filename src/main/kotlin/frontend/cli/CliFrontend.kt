@@ -34,7 +34,7 @@ class CliFrontend(
     private val mcpCommands = setOf("/mcp")
     private val reminderCommands = setOf("/reminder")
     private val indexCommands = setOf("/index")
-    private val askCommands = setOf("/ask", "/rag")
+    private val askCommands = setOf("/ask", "/rag", "/help")
     private val tokenCalculator = TokenCostCalculator(config)
     
     // RAG mode state - when enabled, all queries use RAG system
@@ -71,7 +71,7 @@ class CliFrontend(
                     logger.debug("User requested index command")
                     handleIndexCommand()
                 }
-                userInput.content.lowercase() == "/rag" -> {
+                userInput.content.lowercase() in askCommands -> {
                     logger.debug("User requested RAG toggle")
                     handleRagToggle()
                 }

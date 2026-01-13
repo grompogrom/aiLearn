@@ -88,12 +88,12 @@ data class McpServerConfig(
  */
 object McpConfig {
     val servers: List<McpServerConfig> = listOf(
-        McpServerConfig(
-            id = "default",
-            baseUrl = "http://127.0.0.1:3008/mcp",
-            transportType = McpTransportType.SSE,
-            requestTimeoutMillis = 15_000L
-        ),
+//        McpServerConfig(
+//            id = "default",
+//            baseUrl = "http://127.0.0.1:3008/mcp",
+//            transportType = McpTransportType.SSE,
+//            requestTimeoutMillis = 15_000L
+//        ),
         // Example configuration for git MCP server via STDIO
         McpServerConfig(
             id = "git",
