@@ -26,5 +26,13 @@
     {
         "role": "ASSISTANT",
         "content": "**aiLearn** is a Java-based application that integrates with **Model Context Protocol (MCP)** servers to enable tool calling for AI models, bypassing native limitations in APIs like Perplexity's.[1][2]\n\nIt processes user messages through a `ConversationManager`, activates MCP services when available, and supports features like iterative tool execution cycles, multiple MCP servers (using SSE and StreamableHttp transports), and smart tool routing to the appropriate server.[1][2]\n\nKey technical details include:\n- Built on **Clean Architecture** principles, with directories for backend (Kotlin-based), frontend (including CLI implementation), and configuration via `build.gradle.kts`.[3]\n- Requirements: Java 21+, Gradle 8.0+; installation via `git clone` into the `aiLearn` directory.[2]\n- Custom tool-calling system: User message → processing → MCP tool invocation → final response.[1]\n\nMCP itself is a protocol for AI hosts (e.g., apps with LLMs) to access external data/tools via clients and servers, using JSON-RPC over stdio/SSE for resources like files, APIs, or databases.[4][5][6]"
+    },
+    {
+        "role": "USER",
+        "content": "\u001b[A"
+    },
+    {
+        "role": "ASSISTANT",
+        "content": "I notice that your query appears to be incomplete—it only contains \"[A\" without a full question or context.\n\nCould you please provide the complete query you'd like me to answer? Once you do, I'll be happy to help using the search results about ANSI escape codes that have been provided."
     }
 ]

@@ -14,6 +14,12 @@ import core.reminder.ReminderChecker
 import frontend.Frontend
 import frontend.UserInput
 import frontend.UserOutput
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger(CliFrontend::class.java)
@@ -35,6 +41,7 @@ class CliFrontend(
     private val reminderCommands = setOf("/reminder")
     private val indexCommands = setOf("/index")
     private val askCommands = setOf("/ask", "/rag", "/help")
+    private val reviewCommands = setOf("/review")
     private val tokenCalculator = TokenCostCalculator(config)
     
     // RAG mode state - when enabled, all queries use RAG system
@@ -84,6 +91,11 @@ class CliFrontend(
                     logger.debug("User requested one-time RAG query via /ask")
                     val question = userInput.content.substring(5).trim()
                     handleAskCommand(question)
+                }
+                userInput.content.lowercase().startsWith("/review ") -> {
+                    logger.debug("User requested review command")
+                    val mrLink = userInput.content.substring(8).trim()
+                    handleReviewCommand(conversationManager, mrLink)
                 }
                 else -> {
                     logger.debug("Processing user request (length: ${userInput.content.length})")
@@ -138,6 +150,7 @@ class CliFrontend(
         println("Введите '/rag' для включения/выключения RAG режима (по умолчанию выключен)")
         println("Введите '/index' для создания RAG индекса из документов")
         println("Введите '/ask <вопрос>' для разового поиска ответа в базе знаний")
+        println("Введите '/review <ссылка на MR>' для review merge request через GitHub API")
         println("temp is ${config.temperature}")
     }
 
@@ -450,5 +463,177 @@ class CliFrontend(
             tokenUsage = tokenUsage,
             isDialogEnd = isDialogEnd
         )
+    }
+    
+    /**
+     * Handles the /review command.
+     * Parses MR link, gets diff via GitHub MCP, gets project context via RAG, and performs review.
+     */
+    private suspend fun handleReviewCommand(
+        conversationManager: ConversationManager,
+        mrLink: String
+    ) {
+        logger.info("Handling review command for MR: $mrLink")
+        
+        if (mrLink.isBlank()) {
+            println("\n✗ Укажите ссылку на MR: /review <ссылка на MR>")
+            println("Пример: /review https://github.com/owner/repo/pull/123")
+            return
+        }
+        
+        // Parse MR link to extract owner, repo, and PR number
+        val (owner, repo, prNumber) = parseMrLink(mrLink)
+            ?: run {
+                println("\n✗ Некорректная ссылка на MR. Ожидается формат:")
+                println("  https://github.com/owner/repo/pull/123")
+                println("  или")
+                println("  https://github.com/owner/repo/merge_requests/123")
+                return
+            }
+        
+        logger.debug("Parsed MR link: owner=$owner, repo=$repo, prNumber=$prNumber")
+        
+        // Get diff via GitHub API
+        println("\n🔍 Получение диффа MR через GitHub API...")
+        val mrDiff = getMrDiffViaGithub(owner, repo, prNumber)
+            ?: run {
+                println("\n✗ Не удалось получить дифф MR через GitHub API.")
+                println("Убедитесь, что:")
+                println("  - Установлена переменная окружения AILEARN_GITHUB_TOKEN с GitHub Personal Access Token")
+                println("  - Токен имеет доступ к репозиторию (scope repo)")
+                println("  - Ссылка на MR указана верно")
+                return
+            }
+        
+        logger.info("Retrieved MR diff (length: ${mrDiff.length})")
+        
+        // Get project context via RAG (optional)
+        var ragContext: String? = null
+        if (ragQueryService != null) {
+            try {
+                println("📚 Получение контекста проекта через RAG...")
+                val ragResult = ragQueryService.query("What is the architecture and main components of this project?")
+                ragContext = buildString {
+                    append("Project context from knowledge base:\n\n")
+                    ragResult.retrievedChunks.forEachIndexed { index, chunk ->
+                        append("Source: ${chunk.source}\n")
+                        append("Relevance: ${"%.2f".format(chunk.similarity)}\n")
+                        append("Content:\n${chunk.text}\n\n")
+                    }
+                }
+                logger.info("Retrieved RAG context (length: ${ragContext.length})")
+            } catch (e: Exception) {
+                logger.warn("Failed to get RAG context, continuing without it", e)
+                println("⚠️ Не удалось получить контекст через RAG, продолжаем без него")
+            }
+        } else {
+            logger.debug("RAG service not available, skipping project context")
+        }
+        
+        // Perform review
+        println("\n🤖 Выполнение AI review...")
+        try {
+            val reviewResponse = conversationManager.performReview(
+                mrDiff = mrDiff,
+                ragContext = ragContext
+            )
+            
+            println("\n=== AI CODE REVIEW ===\n")
+            println(reviewResponse.content)
+            println("\n=== END OF REVIEW ===\n")
+            
+            // Display token usage
+            val tokenUsage = tokenCalculator.formatTokenUsage(reviewResponse.usage)
+            println(tokenUsage)
+        } catch (e: Exception) {
+            logger.error("Failed to perform review", e)
+            println("\n✗ Ошибка при выполнении review: ${e.message}")
+        }
+    }
+    
+    /**
+     * Parses a GitHub MR/PR link to extract owner, repo, and PR number.
+     * Supports both GitHub PR format and GitLab MR format.
+     * 
+     * @param link The MR/PR link
+     * @return Triple of (owner, repo, prNumber) or null if parsing fails
+     */
+    private fun parseMrLink(link: String): Triple<String, String, String>? {
+        // GitHub PR format: https://github.com/owner/repo/pull/123
+        val githubPattern = Regex("""https?://github\.com/([^/]+)/([^/]+)/(?:pull|merge_requests)/(\d+)""")
+        val githubMatch = githubPattern.find(link)
+        if (githubMatch != null) {
+            val (owner, repo, prNumber) = githubMatch.destructured
+            return Triple(owner, repo, prNumber)
+        }
+        
+        // GitLab MR format: https://gitlab.com/owner/repo/-/merge_requests/123
+        val gitlabPattern = Regex("""https?://gitlab\.com/([^/]+)/([^/]+)/-/merge_requests/(\d+)""")
+        val gitlabMatch = gitlabPattern.find(link)
+        if (gitlabMatch != null) {
+            val (owner, repo, prNumber) = gitlabMatch.destructured
+            return Triple(owner, repo, prNumber)
+        }
+        
+        return null
+    }
+    
+    /**
+     * Gets MR diff via GitHub REST API.
+     *
+     * Uses endpoint:
+     *   GET https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}
+     * with header:
+     *   Accept: application/vnd.github.v3.diff
+     *
+     * @param owner Repository owner
+     * @param repo Repository name
+     * @param prNumber PR number
+     * @return The diff as string, or null if failed
+     */
+    private suspend fun getMrDiffViaGithub(owner: String, repo: String, prNumber: String): String? {
+        val token = config.githubToken
+        if (token.isBlank()) {
+            logger.warn("GitHub token is not configured")
+            return null
+        }
+
+        val url = "https://api.github.com/repos/$owner/$repo/pulls/$prNumber"
+        logger.info("Requesting PR diff from GitHub API: $url")
+
+        val client = HttpClient(CIO) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = config.requestTimeoutMillis
+            }
+        }
+
+        return try {
+            val response: HttpResponse = client.get(url) {
+                header(HttpHeaders.Accept, "application/vnd.github.v3.diff")
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.UserAgent, "aiLearn")
+            }
+
+            logger.debug("GitHub API response status: ${response.status.value} ${response.status.description}")
+
+            if (!response.status.isSuccess()) {
+                val body = response.bodyAsText()
+                logger.warn("GitHub API returned error ${response.status.value}: $body")
+                null
+            } else {
+                val diff = response.bodyAsText()
+                if (diff.isBlank()) {
+                    logger.warn("GitHub API returned empty diff")
+                    null
+                } else {
+                    diff
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to get PR diff from GitHub API", e)
+            null
+        } finally {
+            client.close()
+        }
     }
 }

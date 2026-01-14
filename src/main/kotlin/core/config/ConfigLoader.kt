@@ -88,6 +88,9 @@ private class EnvironmentConfig : AppConfig {
         get() = System.getenv("AILEARN_USE_MESSAGE_HISTORY")?.toBoolean() 
             ?: DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY
     
+    override val githubToken: String
+        get() = System.getenv("AILEARN_GITHUB_TOKEN") ?: DefaultConfig.DEFAULT_GITHUB_TOKEN
+    
     override val enableSummarization: Boolean
         get() = System.getenv("AILEARN_ENABLE_SUMMARIZATION")?.toBoolean() 
             ?: DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION
@@ -157,6 +160,10 @@ private class EnvironmentConfig : AppConfig {
     override val ragHistoryContextSize: Int
         get() = System.getenv("AILEARN_RAG_HISTORY_CONTEXT_SIZE")?.toIntOrNull()
             ?: DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE
+    
+    override val aiReviewSystemPrompt: String
+        get() = System.getenv("AILEARN_AI_REVIEW_SYSTEM_PROMPT")
+            ?: DefaultConfig.DEFAULT_AI_REVIEW_SYSTEM_PROMPT
 }
 
 /**
@@ -199,6 +206,7 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val pricePerMillionTokens: Double get() = getDouble("price.per.million.tokens", DefaultConfig.DEFAULT_PRICE_PER_MILLION_TOKENS)
     override val requestTimeoutMillis: Long get() = getLong("request.timeout.millis", DefaultConfig.DEFAULT_REQUEST_TIMEOUT_MILLIS)
     override val useMessageHistory: Boolean get() = getBoolean("use.message.history", DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY)
+    override val githubToken: String get() = getString("github.token", DefaultConfig.DEFAULT_GITHUB_TOKEN)
     
     override val enableSummarization: Boolean get() = getBoolean("enable.summarization", DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION)
     
@@ -224,6 +232,7 @@ private class FileConfig(private val properties: java.util.Properties) : AppConf
     override val ragRerankModel: String get() = getString("rag.rerank.model", DefaultConfig.DEFAULT_RAG_RERANK_MODEL)
     override val ragFilterThreshold: Double get() = getDouble("rag.filter.threshold", DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD)
     override val ragHistoryContextSize: Int get() = getInt("rag.history.context.size", DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE)
+    override val aiReviewSystemPrompt: String get() = getString("ai.review.system.prompt", DefaultConfig.DEFAULT_AI_REVIEW_SYSTEM_PROMPT)
 }
 
 /**
@@ -272,6 +281,7 @@ private class BuildConfigWrapper : AppConfig {
     override val pricePerMillionTokens: Double = DefaultConfig.DEFAULT_PRICE_PER_MILLION_TOKENS
     override val requestTimeoutMillis: Long = DefaultConfig.DEFAULT_REQUEST_TIMEOUT_MILLIS
     override val useMessageHistory: Boolean = DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY
+    override val githubToken: String = DefaultConfig.DEFAULT_GITHUB_TOKEN
     
     override val enableSummarization: Boolean = DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION
     
@@ -296,6 +306,7 @@ private class BuildConfigWrapper : AppConfig {
     override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
     override val ragFilterThreshold: Double = DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
     override val ragHistoryContextSize: Int = DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE
+    override val aiReviewSystemPrompt: String = DefaultConfig.DEFAULT_AI_REVIEW_SYSTEM_PROMPT
 }
 
 /**
@@ -312,6 +323,7 @@ private class DefaultAppConfig : AppConfig {
     override val pricePerMillionTokens: Double = DefaultConfig.DEFAULT_PRICE_PER_MILLION_TOKENS
     override val requestTimeoutMillis: Long = DefaultConfig.DEFAULT_REQUEST_TIMEOUT_MILLIS
     override val useMessageHistory: Boolean = DefaultConfig.DEFAULT_USE_MESSAGE_HISTORY
+    override val githubToken: String = DefaultConfig.DEFAULT_GITHUB_TOKEN
     
     override val enableSummarization: Boolean = DefaultConfig.DEFAULT_ENABLE_SUMMARIZATION
     
@@ -336,6 +348,7 @@ private class DefaultAppConfig : AppConfig {
     override val ragRerankModel: String = DefaultConfig.DEFAULT_RAG_RERANK_MODEL
     override val ragFilterThreshold: Double = DefaultConfig.DEFAULT_RAG_FILTER_THRESHOLD
     override val ragHistoryContextSize: Int = DefaultConfig.DEFAULT_RAG_HISTORY_CONTEXT_SIZE
+    override val aiReviewSystemPrompt: String = DefaultConfig.DEFAULT_AI_REVIEW_SYSTEM_PROMPT
 }
 
 /**
@@ -355,6 +368,7 @@ private class CompositeConfig(
     override val pricePerMillionTokens: Double get() = primary.pricePerMillionTokens
     override val requestTimeoutMillis: Long get() = primary.requestTimeoutMillis
     override val useMessageHistory: Boolean get() = primary.useMessageHistory
+    override val githubToken: String get() = primary.githubToken.ifEmpty { fallback.githubToken }
     
     override val enableSummarization: Boolean get() = primary.enableSummarization
     
@@ -379,4 +393,5 @@ private class CompositeConfig(
     override val ragRerankModel: String get() = primary.ragRerankModel.ifEmpty { fallback.ragRerankModel }
     override val ragFilterThreshold: Double get() = if (primary.ragFilterThreshold > 0) primary.ragFilterThreshold else fallback.ragFilterThreshold
     override val ragHistoryContextSize: Int get() = if (primary.ragHistoryContextSize > 0) primary.ragHistoryContextSize else fallback.ragHistoryContextSize
+    override val aiReviewSystemPrompt: String get() = primary.aiReviewSystemPrompt.ifEmpty { fallback.aiReviewSystemPrompt }
 }
