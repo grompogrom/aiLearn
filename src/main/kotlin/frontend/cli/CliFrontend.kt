@@ -1,9 +1,11 @@
 package frontend.cli
 
+import api.github.GithubClient
 import core.config.AppConfig
 import core.conversation.ConversationManager
 import core.conversation.TokenCostCalculator
 import core.domain.ChatResponse
+import core.github.GithubUtils
 import core.mcp.McpError
 import core.mcp.McpResult
 import core.mcp.McpService
@@ -14,12 +16,6 @@ import core.reminder.ReminderChecker
 import frontend.Frontend
 import frontend.UserInput
 import frontend.UserOutput
-import io.ktor.client.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger(CliFrontend::class.java)
@@ -482,7 +478,7 @@ class CliFrontend(
         }
         
         // Parse MR link to extract owner, repo, and PR number
-        val (owner, repo, prNumber) = parseMrLink(mrLink)
+        val (owner, repo, prNumber) = GithubUtils.parseMrLink(mrLink)
             ?: run {
                 println("\n✗ Некорректная ссылка на MR. Ожидается формат:")
                 println("  https://github.com/owner/repo/pull/123")
@@ -495,7 +491,9 @@ class CliFrontend(
         
         // Get diff via GitHub API
         println("\n🔍 Получение диффа MR через GitHub API...")
-        val mrDiff = getMrDiffViaGithub(owner, repo, prNumber)
+        val mrDiff = GithubClient(config).use { client ->
+            client.getPullRequestDiff(owner, repo, prNumber)
+        }
             ?: run {
                 println("\n✗ Не удалось получить дифф MR через GitHub API.")
                 println("Убедитесь, что:")
@@ -545,95 +543,23 @@ class CliFrontend(
             // Display token usage
             val tokenUsage = tokenCalculator.formatTokenUsage(reviewResponse.usage)
             println(tokenUsage)
+            
+            // Post review as comment to PR
+            println("\n💬 Отправка review как комментария в MR...")
+            val commentPosted = GithubClient(config).use { client ->
+                client.postComment(owner, repo, prNumber, reviewResponse.content)
+            }
+            
+            if (commentPosted) {
+                println("✅ Review успешно отправлен как комментарий в MR!")
+            } else {
+                println("⚠️ Не удалось отправить комментарий в MR, но review выполнен успешно.")
+                println("Проверьте права доступа токена (нужен scope 'repo' или 'public_repo').")
+            }
         } catch (e: Exception) {
             logger.error("Failed to perform review", e)
             println("\n✗ Ошибка при выполнении review: ${e.message}")
         }
     }
     
-    /**
-     * Parses a GitHub MR/PR link to extract owner, repo, and PR number.
-     * Supports both GitHub PR format and GitLab MR format.
-     * 
-     * @param link The MR/PR link
-     * @return Triple of (owner, repo, prNumber) or null if parsing fails
-     */
-    private fun parseMrLink(link: String): Triple<String, String, String>? {
-        // GitHub PR format: https://github.com/owner/repo/pull/123
-        val githubPattern = Regex("""https?://github\.com/([^/]+)/([^/]+)/(?:pull|merge_requests)/(\d+)""")
-        val githubMatch = githubPattern.find(link)
-        if (githubMatch != null) {
-            val (owner, repo, prNumber) = githubMatch.destructured
-            return Triple(owner, repo, prNumber)
-        }
-        
-        // GitLab MR format: https://gitlab.com/owner/repo/-/merge_requests/123
-        val gitlabPattern = Regex("""https?://gitlab\.com/([^/]+)/([^/]+)/-/merge_requests/(\d+)""")
-        val gitlabMatch = gitlabPattern.find(link)
-        if (gitlabMatch != null) {
-            val (owner, repo, prNumber) = gitlabMatch.destructured
-            return Triple(owner, repo, prNumber)
-        }
-        
-        return null
-    }
-    
-    /**
-     * Gets MR diff via GitHub REST API.
-     *
-     * Uses endpoint:
-     *   GET https://api.github.com/repos/{owner}/{repo}/pulls/{prNumber}
-     * with header:
-     *   Accept: application/vnd.github.v3.diff
-     *
-     * @param owner Repository owner
-     * @param repo Repository name
-     * @param prNumber PR number
-     * @return The diff as string, or null if failed
-     */
-    private suspend fun getMrDiffViaGithub(owner: String, repo: String, prNumber: String): String? {
-        val token = config.githubToken
-        if (token.isBlank()) {
-            logger.warn("GitHub token is not configured")
-            return null
-        }
-
-        val url = "https://api.github.com/repos/$owner/$repo/pulls/$prNumber"
-        logger.info("Requesting PR diff from GitHub API: $url")
-
-        val client = HttpClient(CIO) {
-            install(HttpTimeout) {
-                requestTimeoutMillis = config.requestTimeoutMillis
-            }
-        }
-
-        return try {
-            val response: HttpResponse = client.get(url) {
-                header(HttpHeaders.Accept, "application/vnd.github.v3.diff")
-                header(HttpHeaders.Authorization, "Bearer $token")
-                header(HttpHeaders.UserAgent, "aiLearn")
-            }
-
-            logger.debug("GitHub API response status: ${response.status.value} ${response.status.description}")
-
-            if (!response.status.isSuccess()) {
-                val body = response.bodyAsText()
-                logger.warn("GitHub API returned error ${response.status.value}: $body")
-                null
-            } else {
-                val diff = response.bodyAsText()
-                if (diff.isBlank()) {
-                    logger.warn("GitHub API returned empty diff")
-                    null
-                } else {
-                    diff
-                }
-            }
-        } catch (e: Exception) {
-            logger.error("Failed to get PR diff from GitHub API", e)
-            null
-        } finally {
-            client.close()
-        }
-    }
 }

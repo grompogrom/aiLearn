@@ -552,9 +552,25 @@ val servers: List<McpServerConfig> = listOf(
 
 Полная документация по RAG: [RAG_DESCRIPTION.md](RAG_DESCRIPTION.md)
 
+## 🤖 AI Code Review
+
+Приложение включает функцию автоматического code review для merge requests через GitHub API.
+
+**Быстрый старт:**
+```bash
+# Настройте GitHub токен
+export AILEARN_GITHUB_TOKEN=ghp_your_token_here
+
+# Выполните review MR
+/review https://github.com/owner/repo/pull/123
+```
+
+Полная документация: [AIREVIEW.md](AIREVIEW.md)
+
 ## 📚 Дополнительная документация
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Подробное описание архитектуры, включая MCP интеграцию
 - [PROJECT_DESCRIPTION.md](PROJECT_DESCRIPTION.md) - Описание проекта и компонентов
 - [RAG_DESCRIPTION.md](RAG_DESCRIPTION.md) - Полная документация по системе RAG (индексация, поиск, re-ranking)
+- [AIREVIEW.md](AIREVIEW.md) - Документация по AI Code Review для merge requests
 - [HISTORY_PERSISTENCE_GUIDE.md](HISTORY_PERSISTENCE_GUIDE.md) - Руководство по управлению сохранением истории диалогов
