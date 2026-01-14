@@ -17,6 +17,7 @@ class JsonMemoryStoreTest {
     
     private val testFile = File("test_history.json")
     
+    
     private val testConfig = object : AppConfig {
         override val apiKey: String = "test-key"
         override val apiUrl: String = "https://test.api"
