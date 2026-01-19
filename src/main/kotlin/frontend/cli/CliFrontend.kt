@@ -1,9 +1,11 @@
 package frontend.cli
 
+import api.github.GithubClient
 import core.config.AppConfig
 import core.conversation.ConversationManager
 import core.conversation.TokenCostCalculator
 import core.domain.ChatResponse
+import core.github.GithubUtils
 import core.mcp.McpError
 import core.mcp.McpResult
 import core.mcp.McpService
@@ -35,6 +37,7 @@ class CliFrontend(
     private val reminderCommands = setOf("/reminder")
     private val indexCommands = setOf("/index")
     private val askCommands = setOf("/ask", "/rag", "/help")
+    private val reviewCommands = setOf("/review")
     private val tokenCalculator = TokenCostCalculator(config)
     
     // RAG mode state - when enabled, all queries use RAG system
@@ -84,6 +87,11 @@ class CliFrontend(
                     logger.debug("User requested one-time RAG query via /ask")
                     val question = userInput.content.substring(5).trim()
                     handleAskCommand(question)
+                }
+                userInput.content.lowercase().startsWith("/review ") -> {
+                    logger.debug("User requested review command")
+                    val mrLink = userInput.content.substring(8).trim()
+                    handleReviewCommand(conversationManager, mrLink)
                 }
                 else -> {
                     logger.debug("Processing user request (length: ${userInput.content.length})")
@@ -138,6 +146,7 @@ class CliFrontend(
         println("Введите '/rag' для включения/выключения RAG режима (по умолчанию выключен)")
         println("Введите '/index' для создания RAG индекса из документов")
         println("Введите '/ask <вопрос>' для разового поиска ответа в базе знаний")
+        println("Введите '/review <ссылка на MR>' для review merge request через GitHub API")
         println("temp is ${config.temperature}")
     }
 
@@ -451,4 +460,106 @@ class CliFrontend(
             isDialogEnd = isDialogEnd
         )
     }
+    
+    /**
+     * Handles the /review command.
+     * Parses MR link, gets diff via GitHub MCP, gets project context via RAG, and performs review.
+     */
+    private suspend fun handleReviewCommand(
+        conversationManager: ConversationManager,
+        mrLink: String
+    ) {
+        logger.info("Handling review command for MR: $mrLink")
+        
+        if (mrLink.isBlank()) {
+            println("\n✗ Укажите ссылку на MR: /review <ссылка на MR>")
+            println("Пример: /review https://github.com/owner/repo/pull/123")
+            return
+        }
+        
+        // Parse MR link to extract owner, repo, and PR number
+        val (owner, repo, prNumber) = GithubUtils.parseMrLink(mrLink)
+            ?: run {
+                println("\n✗ Некорректная ссылка на MR. Ожидается формат:")
+                println("  https://github.com/owner/repo/pull/123")
+                println("  или")
+                println("  https://github.com/owner/repo/merge_requests/123")
+                return
+            }
+        
+        logger.debug("Parsed MR link: owner=$owner, repo=$repo, prNumber=$prNumber")
+        
+        // Get diff via GitHub API
+        println("\n🔍 Получение диффа MR через GitHub API...")
+        val mrDiff = GithubClient(config).use { client ->
+            client.getPullRequestDiff(owner, repo, prNumber)
+        }
+            ?: run {
+                println("\n✗ Не удалось получить дифф MR через GitHub API.")
+                println("Убедитесь, что:")
+                println("  - Установлена переменная окружения AILEARN_GITHUB_TOKEN с GitHub Personal Access Token")
+                println("  - Токен имеет доступ к репозиторию (scope repo)")
+                println("  - Ссылка на MR указана верно")
+                return
+            }
+        
+        logger.info("Retrieved MR diff (length: ${mrDiff.length})")
+        
+        // Get project context via RAG (optional)
+        var ragContext: String? = null
+        if (ragQueryService != null) {
+            try {
+                println("📚 Получение контекста проекта через RAG...")
+                val ragResult = ragQueryService.query("What is the architecture and main components of this project?")
+                ragContext = buildString {
+                    append("Project context from knowledge base:\n\n")
+                    ragResult.retrievedChunks.forEachIndexed { index, chunk ->
+                        append("Source: ${chunk.source}\n")
+                        append("Relevance: ${"%.2f".format(chunk.similarity)}\n")
+                        append("Content:\n${chunk.text}\n\n")
+                    }
+                }
+                logger.info("Retrieved RAG context (length: ${ragContext.length})")
+            } catch (e: Exception) {
+                logger.warn("Failed to get RAG context, continuing without it", e)
+                println("⚠️ Не удалось получить контекст через RAG, продолжаем без него")
+            }
+        } else {
+            logger.debug("RAG service not available, skipping project context")
+        }
+        
+        // Perform review
+        println("\n🤖 Выполнение AI review...")
+        try {
+            val reviewResponse = conversationManager.performReview(
+                mrDiff = mrDiff,
+                ragContext = ragContext
+            )
+            
+            println("\n=== AI CODE REVIEW ===\n")
+            println(reviewResponse.content)
+            println("\n=== END OF REVIEW ===\n")
+            
+            // Display token usage
+            val tokenUsage = tokenCalculator.formatTokenUsage(reviewResponse.usage)
+            println(tokenUsage)
+            
+            // Post review as comment to PR
+            println("\n💬 Отправка review как комментария в MR...")
+            val commentPosted = GithubClient(config).use { client ->
+                client.postComment(owner, repo, prNumber, reviewResponse.content)
+            }
+            
+            if (commentPosted) {
+                println("✅ Review успешно отправлен как комментарий в MR!")
+            } else {
+                println("⚠️ Не удалось отправить комментарий в MR, но review выполнен успешно.")
+                println("Проверьте права доступа токена (нужен scope 'repo' или 'public_repo').")
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to perform review", e)
+            println("\n✗ Ошибка при выполнении review: ${e.message}")
+        }
+    }
+    
 }

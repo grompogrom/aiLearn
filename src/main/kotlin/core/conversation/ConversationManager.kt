@@ -396,4 +396,56 @@ class ConversationManager(
         
         return nonSystemMessages.subList(startIndex, nonSystemMessages.size)
     }
+    
+    /**
+     * Performs AI review of a merge request.
+     * Uses a custom system prompt for code review and combines MR diff with project context from RAG.
+     * 
+     * @param mrDiff The diff of the merge request
+     * @param ragContext Optional context from RAG system about the project
+     * @param temperature Optional temperature override (defaults to config temperature)
+     * @return ChatResponse with the review
+     */
+    suspend fun performReview(
+        mrDiff: String,
+        ragContext: String? = null,
+        temperature: Double? = null
+    ): ChatResponse {
+        logger.info("Performing AI review (diff length: ${mrDiff.length}, has RAG context: ${ragContext != null})")
+        
+        // Build the review prompt with MR diff and optional RAG context
+        val reviewPrompt = buildString {
+            append("Please review the following merge request diff:\n\n")
+            append("=== MERGE REQUEST DIFF ===\n")
+            append(mrDiff)
+            append("\n=== END OF DIFF ===\n\n")
+            
+            if (ragContext != null && ragContext.isNotBlank()) {
+                append("=== PROJECT CONTEXT (from knowledge base) ===\n")
+                append(ragContext)
+                append("\n=== END OF PROJECT CONTEXT ===\n\n")
+            }
+            
+            append("Please provide a comprehensive code review based on the diff and project context.")
+        }
+        
+        // Create request with custom system prompt for review
+        val messages = listOf(
+            Message.create(MessageRole.SYSTEM, config.aiReviewSystemPrompt),
+            Message.create(MessageRole.USER, reviewPrompt)
+        )
+        
+        val request = ChatRequest(
+            model = config.model,
+            messages = messages,
+            maxTokens = config.maxTokens,
+            temperature = temperature ?: config.temperature
+        )
+        
+        logger.debug("Sending review request to LLM (messages: ${messages.size})")
+        val response = llmProvider.sendRequest(request)
+        logger.info("Review completed (response length: ${response.content.length})")
+        
+        return response
+    }
 }
